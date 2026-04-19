@@ -1,0 +1,13 @@
+# Virtual environment
+venv/
+
+# Database files
+*.db
+umlagents.db
+
+# Test output
+test_output/
+output/
+
+# Environment
+.env

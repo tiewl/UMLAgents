@@ -1,0 +1,34 @@
+# UMLAgents YAML Schema v0.1
+# Minimum structure for use case description
+# Used by BA Agent to guide conversation, then generate full spec
+
+project:
+  name: string                     # Project identifier
+  domain: string                   # e.g., "Healthcare", "Finance", "Gaming", "E‑commerce"
+  description: string              # 1‑2 sentence overview
+  regulatory_frameworks: string[]  # optional: ["GDPR", "SOC2", "HIPAA", "PCI‑DSS"]
+
+actors:
+  - name: string                   # Unique identifier (referenced in use‑cases)
+    description: string            # Role and responsibilities
+    role: string                   # e.g., "EndUser", "Administrator", "System", "ExternalService"
+
+use_cases:
+  - id: string                     # Unique ID, e.g., "UC1", "AUTH‑001"
+    title: string                  # Short, action‑oriented title
+    actor: string                  # References actors.name
+    priority: integer              # 1‑3: 1=must have, 2=should have, 3=could have
+    pre_conditions: string[]       # What must be true before this use case can start
+    success_scenario: string[]     # Numbered steps in main success path
+    extension_scenarios:           # Alternative or error paths
+      - condition: string          # When this path triggers
+        steps: string[]            # Steps for this alternative
+    post_conditions: string[]      # What is true after use case completes
+    regulatory_requirements: string[]  # optional: specific compliance needs
+    uat_criteria: string[]         # User Acceptance Test criteria
+
+# Metadata (auto‑generated, not user‑supplied)
+metadata:
+  generated_at: timestamp          # ISO 8601
+  generated_by: string             # Agent ID
+  schema_version: "0.1"

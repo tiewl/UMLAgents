@@ -1,0 +1,100 @@
+# Dice Game Example
+# Illustrates minimal YAML for UMLAgents v0.1
+# Based on Leon's dice‑game‑agents reference
+
+project:
+  name: "Dice Game"
+  domain: "Gaming"
+  description: "A simple dice‑rolling game for 2‑4 players"
+  regulatory_frameworks: []  # Gaming typically has fewer regulations
+
+actors:
+  - name: "Player"
+    description: "A person playing the game"
+    role: "EndUser"
+  - name: "GameSystem"
+    description: "Manages game state, rules, and dice rolls"
+    role: "System"
+
+use_cases:
+  - id: "UC1"
+    title: "Join Game"
+    actor: "Player"
+    priority: 1
+    pre_conditions:
+      - "Game session exists"
+      - "Game has available slots"
+    success_scenario:
+      - "Player requests to join game"
+      - "System validates available slot"
+      - "System adds player to game session"
+      - "System notifies all players of new participant"
+    extension_scenarios:
+      - condition: "Game is full"
+        steps:
+          - "System rejects join request"
+          - "System suggests creating new game"
+    post_conditions:
+      - "Player is registered in game session"
+      - "Player count increased by 1"
+    uat_criteria:
+      - "Player can successfully join available game"
+      - "Full game rejects new players appropriately"
+
+  - id: "UC2"
+    title: "Roll Dice"
+    actor: "Player"
+    priority: 1
+    pre_conditions:
+      - "Player has joined game"
+      - "It is player's turn"
+      - "Game is in progress"
+    success_scenario:
+      - "Player requests dice roll"
+      - "System generates random number 1‑6"
+      - "System updates game state with roll result"
+      - "System displays result to all players"
+      - "System passes turn to next player"
+    extension_scenarios:
+      - condition: "Not player's turn"
+        steps:
+          - "System rejects roll request"
+          - "System indicates whose turn it is"
+    post_conditions:
+      - "Dice result recorded in game history"
+      - "Turn passed to next player"
+    uat_criteria:
+      - "Roll produces valid random number 1‑6"
+      - "Turn passes correctly after roll"
+      - "Wrong‑turn attempts are rejected"
+
+  - id: "UC3"
+    title: "Declare Winner"
+    actor: "GameSystem"
+    priority: 1
+    pre_conditions:
+      - "Game round completed"
+      - "All players have rolled"
+    success_scenario:
+      - "System compares all roll results"
+      - "System identifies highest roll"
+      - "System declares winning player"
+      - "System records win in game history"
+      - "System offers option for new round"
+    extension_scenarios:
+      - condition: "Tie between players"
+        steps:
+          - "System announces tie"
+          - "System initiates tie‑breaker round"
+    post_conditions:
+      - "Winner (or tie) is determined"
+      - "Game round is complete"
+    uat_criteria:
+      - "Correct winner is identified"
+      - "Ties are handled with tie‑breaker"
+      - "Game history records result"
+
+metadata:
+  generated_at: "2026-04-19T21:30:00Z"
+  generated_by: "BA-Agent-v0.1"
+  schema_version: "0.1"
