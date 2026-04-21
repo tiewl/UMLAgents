@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include .env.example
+include schema/*.yaml
+include examples/*.yaml
+recursive-include umlagents *.py
+recursive-include umlagents *.yaml
+recursive-include umlagents *.md

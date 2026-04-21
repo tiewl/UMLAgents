@@ -37,6 +37,7 @@ env/
 *.db
 *.sqlite
 *.sqlite3
+*.backup
 
 # Environment variables
 .env
@@ -50,6 +51,9 @@ test_output/
 .openclaw/
 .clawhub/
 
+# External references
+dice-game-agents-ref/
+
 # Memory files (daily logs)
 memory/
 state/
@@ -61,6 +65,11 @@ state/
 # Temporary files
 *.tmp
 *.temp
+
+# Generated files
+get-pip.py
+project_*.yaml
+*.export.yaml
 
 # Logs
 *.log

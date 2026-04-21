@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "umlagents"
+version = "0.1.0"
+description = "Automated OOA/OOD pipeline using role‑playing AI agents"
+readme = "README.md"
+authors = [{name = "UMLAgents Team"}]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Code Generators",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "sqlalchemy>=1.4",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0",
+    "requests>=2.25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+]
+web = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.23",
+    "websockets>=12.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/openclaw/umlagents"
+Documentation = "https://docs.umlagents.ai"
+Repository = "https://github.com/openclaw/umlagents.git"
+Issues = "https://github.com/openclaw/umlagents/issues"
+
+[project.scripts]
+umlagents = "umlagents.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["umlagents*"]
+
+[tool.setuptools.package-data]
+umlagents = [
+    "schema/*.yaml",
+    "examples/*.yaml",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true

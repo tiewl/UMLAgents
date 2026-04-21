@@ -22,7 +22,7 @@ Enable non‑technical creators to test ideas without hiring developers, through
 ┌─────────────────────────────────────────────────────┐
 │                 UMLAgents Pipeline                   │
 │                                                     │
-│  BA Agent → Architect → Design → Dev → Test         │
+│  BA Agent → Architect → Design → Dev → Test → Deploy│
 │  (validates)  (diagrams)  (patterns) (code) (tests) │
 │                                                     │
 │  ┌─────────────────────────────────────────────┐    │
@@ -33,95 +33,134 @@ Enable non‑technical creators to test ideas without hiring developers, through
                           │
           ┌───────────────┼───────────────┐
           ▼               ▼               ▼
-    PlantUML diagrams  Production code  UAT checklist
-    (.puml)           (Python/TS)       (.md)
+    PlantUML diagrams  Production code  Deployment config
+    (.puml)           (Python)          (Docker, k8s)
 ```
 
-## Quick Start (Week 1 MVP)
+## Features
 
-UMLAgents now has a working BA Agent with SQLite audit trail and CLI.
+- **6 Role‑Playing Agents**: BA, Architect, Design, Developer, Tester, Deployer
+- **Larman Methodology**: INCEPTION → ELABORATION → CONSTRUCTION → TRANSITION
+- **SQLite Audit Trail**: Complete traceability from requirements to deployment
+- **YAML Specification**: Structured use case definitions
+- **Interactive Elicitation**: AI‑guided requirement gathering
+- **WebSocket UI**: Real‑time pipeline monitoring and control
+- **Production‑Ready**: Validation, error handling, structured logging
 
-### 1. Setup Environment
+## Quick Start
+
+### Installation
 
 ```bash
-# Navigate to project
-cd /home/picoclaw/.openclaw/workspace/umlagents
+# Install from source (development)
+git clone <repository>
+cd umlagents
+pip install -e .
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Configure DeepSeek API key (required for full pipeline)
-# Edit .env file with your key from https://platform.deepseek.com/
-# For YAML-only testing, any non-dummy value works
+# Or install directly (when published)
+pip install umlagents
 ```
 
-### 2. CLI Commands
+### Configuration
+
+1. Get a DeepSeek API key from [platform.deepseek.com](https://platform.deepseek.com/)
+2. Create `.env` file:
+   ```bash
+   DEEPSEEK_API_KEY=your_key_here
+   DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+   ```
+
+### Basic Usage
 
 ```bash
-# Validate YAML file against schema
-python cli.py validate examples/dice-game-example.yaml
+# Validate a YAML specification
+umlagents validate examples/dice-game-example.yaml
 
-# Load YAML into database with audit trail
-python cli.py load-yaml examples/dice-game-example.yaml
+# Load YAML into database
+umlagents load-yaml examples/dice-game-example.yaml
 
-# List projects in database
-python cli.py list
+# List projects
+umlagents list
 
-# Export project from database to YAML
-python cli.py export 1 --output exported.yaml
+# Run full pipeline on project ID 1
+umlagents orchestrate 1
 
-# Interactive requirement elicitation (Larman-style questions)
-python cli.py interactive --project-name "My Project" --domain "Finance"
+# Generate UML diagrams only
+umlagents architect 1 --diagram-types "domain,sequence"
+
+# Start WebSocket UI (monitoring)
+uvicorn umlagents.web.app:app --host 0.0.0.0 --port 8080
 ```
 
-### 3. Test Suite
+## Examples
+
+### Dice Game (Gaming Domain)
+- **Location**: `examples/dice-game-example.yaml`
+- **Description**: Simple dice‑rolling game for 2‑4 players
+- **Actors**: Player, GameSystem
+- **Use Cases**: Join Game, Roll Dice, Declare Winner
+
+### Healthcare Appointment System (Healthcare Domain)
+- **Location**: `examples/healthcare-appointment.yaml`
+- **Description**: HIPAA‑compliant appointment scheduling for medical clinics
+- **Actors**: Patient, Receptionist, Doctor, BillingSystem, EMRSystem
+- **Use Cases**: Schedule Appointment, Cancel Appointment, View Doctor Schedule, Generate Billing Invoice, Sync with EMR
+
+## Project Structure
+
+```
+umlagents/
+├── umlagents/              # Core package
+│   ├── agents/             # 6 role‑playing agents
+│   ├── db/                 # SQLite models and audit trail
+│   ├── utils/              # Validation, logging utilities
+│   └── web/                # WebSocket UI (FastAPI)
+├── examples/               # YAML specifications
+├── schema/                 # YAML schema definition
+├── output/                 # Generated artifacts by project ID
+├── cli.py                  # Command‑line interface
+├── pyproject.toml          # Package configuration
+└── README.md               # This file
+```
+
+## Development
+
+### Running Tests
+```bash
+# Run validation tests
+python test_validation.py
+
+# Run CLI tests
+python test_cli_validation.py
+```
+
+### Adding New Features
+1. Follow existing agent patterns in `umlagents/agents/`
+2. Update database models in `umlagents/db/models.py`
+3. Add CLI command in `cli.py`
+4. Update documentation
+
+## WebSocket UI
+
+UMLAgents includes a real‑time monitoring interface:
 
 ```bash
-# Run Week 1 tests
-python test_week1.py
+# Start the WebSocket server
+uvicorn umlagents.web.app:app --host 0.0.0.0 --port 8080 --reload
 ```
 
-## Agent Roles
-
-| Agent | Responsibility | Output |
-|-------|----------------|--------|
-| **BA Agent** | Interactive requirement elicitation, validates use cases, extracts domain vocabulary | YAML use case specification |
-| **Architect Agent** | Produces domain & sequence diagrams (PlantUML) | `.puml` files |
-| **Design Agent** | Generates class diagrams with GoF patterns (low coupling/high cohesion) | Class diagrams, design decisions |
-| **Dev Agent** | Writes production‑ready code (Python/TypeScript) | Application source code |
-| **Test Agent** | Creates integration & UAT scripts | Test suites, UAT checklist |
-
-## YAML Schema
-
-See `schema/umlagents-schema-v0.1.yaml` for the structured input format.
-
-## Design Principles
-
-1. **CLI‑first** – Enables ecosystem growth (Miro, Jira, GitHub, VS Code integrations)
-2. **Pi‑compatible** – SQLite audit trail, single‑container deployment (ARM64 friendly)
-3. **Regulatory‑by‑design** – Full traceability matrix (requirements→design→code→tests)
-4. **Specialized agents** – 5 distinct roles collaborating > monolithic AI
-5. **Interactive elicitation** – Conversation‑first, not UML‑expertise‑required
-
-## Current Status
-
-**Week 1 COMPLETE** ✅
-- [x] **YAML schema** (`schema/umlagents-schema-v0.1.yaml`) – Larman‑aligned use case format
-- [x] **SQLite audit trail** (`umlagents/db/models.py`) – Full traceability with GRASP/GoF pattern tracking
-- [x] **Base agent** (`umlagents/agents/base.py`) – DeepSeek API + audit logging (dice‑game‑agents compatible)
-- [x] **BA Agent** (`umlagents/agents/ba_agent.py`) – YAML load + interactive modes, Larman‑style questioning
-- [x] **CLI interface** (`cli.py`) – Validate, load‑yaml, interactive, export, list commands
-- [x] **Test suite** (`test_week1.py`) – All tests passing
-- [x] **Example** (`examples/dice-game-example.yaml`) – Dice game specification
-
-**Week 2‑3 (Next)**
-- [ ] **Architect Agent** – PlantUML diagram generation from use cases
-- [ ] **Design Agent** – GRASP/GoF pattern application with rationale
-- [ ] **Orchestrator** – Agent pipeline with SQLite audit integration
-- [ ] **Integration** – Compatibility layer for dice‑game‑agents
-
-**Hybrid Approach (Option C)** – Supports both YAML schema and natural language prompt modes
+Access the UI at `http://localhost:8080` for:
+- Real‑time pipeline event monitoring
+- Interactive requirement elicitation
+- Artifact preview and download
+- Audit trail exploration
 
 ## License
 
-Open source / research (TBD)
+MIT License - see [LICENSE](LICENSE) file.
+
+## Acknowledgments
+
+- Based on Craig Larman's Object‑Oriented Analysis and Design methodology
+- Inspired by modern AI‑assisted development workflows
+- Built with SQLAlchemy, FastAPI, and DeepSeek AI

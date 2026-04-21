@@ -1,0 +1,180 @@
+# Healthcare Appointment Scheduling System
+# UMLAgents Example - Healthcare Domain
+
+project:
+  name: "HealthSync Appointment System"
+  domain: "Healthcare"
+  description: "A HIPAA-compliant appointment scheduling system for medical clinics"
+  regulatory_frameworks: ["HIPAA", "SOC2"]
+
+actors:
+  - name: "Patient"
+    description: "Individual seeking medical care"
+    role: "EndUser"
+  - name: "Receptionist"
+    description: "Clinic staff managing appointments"
+    role: "Administrator"
+  - name: "Doctor"
+    description: "Medical professional providing care"
+    role: "EndUser"
+  - name: "BillingSystem"
+    description: "External system for processing payments"
+    role: "ExternalService"
+  - name: "EMRSystem"
+    description: "Electronic Medical Records system"
+    role: "System"
+
+use_cases:
+  - id: "UC1"
+    title: "Schedule Appointment"
+    actor: "Patient"
+    priority: 1
+    pre_conditions:
+      - "Patient is registered in system"
+      - "Doctor has available time slots"
+      - "Clinic is open for appointments"
+    success_scenario:
+      - "Patient logs into patient portal"
+      - "System displays available doctors and time slots"
+      - "Patient selects doctor, date, and time"
+      - "System validates appointment availability"
+      - "System confirms appointment and sends confirmation"
+      - "System updates doctor's schedule"
+    extension_scenarios:
+      - condition: "Requested time slot is unavailable"
+        steps:
+          - "System suggests alternative times"
+          - "Patient selects alternative or cancels"
+      - condition: "Patient is not registered"
+        steps:
+          - "System prompts for registration"
+          - "Patient completes registration form"
+    post_conditions:
+      - "Appointment is scheduled in system"
+      - "Doctor's schedule is updated"
+      - "Confirmation sent to patient"
+    regulatory_requirements:
+      - "HIPAA: Patient data must be encrypted"
+      - "SOC2: Audit trail of appointment changes"
+    uat_criteria:
+      - "Patient can successfully schedule appointment"
+      - "System prevents double-booking"
+      - "Confirmation email/SMS is sent"
+
+  - id: "UC2"
+    title: "Cancel Appointment"
+    actor: "Patient"
+    priority: 1
+    pre_conditions:
+      - "Appointment exists and is in the future"
+      - "Patient is authenticated"
+    success_scenario:
+      - "Patient views upcoming appointments"
+      - "Patient selects appointment to cancel"
+      - "System confirms cancellation"
+      - "System frees up time slot for other patients"
+      - "System sends cancellation confirmation"
+    extension_scenarios:
+      - condition: "Cancellation is within 24 hours of appointment"
+        steps:
+          - "System applies cancellation fee"
+          - "Patient confirms acceptance of fee"
+    post_conditions:
+      - "Appointment is cancelled"
+      - "Time slot becomes available"
+      - "Cancellation recorded in audit trail"
+    regulatory_requirements:
+      - "HIPAA: Maintain record of cancellation reason"
+    uat_criteria:
+      - "Patient can cancel appointment"
+      - "Cancellation fee applied when appropriate"
+      - "Time slot becomes available for rebooking"
+
+  - id: "UC3"
+    title: "View Doctor Schedule"
+    actor: "Doctor"
+    priority: 2
+    pre_conditions:
+      - "Doctor is authenticated"
+      - "Doctor has appointments scheduled"
+    success_scenario:
+      - "Doctor logs into system"
+      - "System displays daily/weekly schedule"
+      - "System highlights upcoming appointments"
+      - "Doctor can filter by date range"
+    extension_scenarios:
+      - condition: "No appointments scheduled"
+        steps:
+          - "System displays empty schedule message"
+          - "System suggests exporting schedule"
+    post_conditions:
+      - "Doctor has viewed schedule"
+    regulatory_requirements:
+      - "HIPAA: Schedule must not expose patient details to unauthorized users"
+    uat_criteria:
+      - "Doctor can view their schedule"
+      - "Schedule displays correct appointment details"
+      - "Filtering works correctly"
+
+  - id: "UC4"
+    title: "Generate Billing Invoice"
+    actor: "Receptionist"
+    priority: 2
+    pre_conditions:
+      - "Appointment has occurred"
+      - "Patient has insurance on file"
+    success_scenario:
+      - "Receptionist marks appointment as completed"
+      - "System generates invoice based on services"
+      - "System applies insurance coverage calculations"
+      - "System sends invoice to patient and insurance"
+      - "System records invoice in billing history"
+    extension_scenarios:
+      - condition: "Insurance claim is rejected"
+        steps:
+          - "System flags invoice for review"
+          - "Receptionist reviews and resubmits"
+    post_conditions:
+      - "Invoice is generated and sent"
+      - "Billing record created"
+    regulatory_requirements:
+      - "HIPAA: Protected health information in invoices"
+      - "SOC2: Invoice generation audit trail"
+    uat_criteria:
+      - "Invoice generated with correct amounts"
+      - "Insurance calculations are accurate"
+      - "Invoices are sent to correct parties"
+
+  - id: "UC5"
+    title: "Sync with EMR System"
+    actor: "EMRSystem"
+    priority: 1
+    pre_conditions:
+      - "Appointment is scheduled or updated"
+      - "EMR system is online and accessible"
+    success_scenario:
+      - "System detects appointment change"
+      - "System formats appointment data for EMR"
+      - "System sends secure API call to EMR"
+      - "EMR system acknowledges receipt"
+      - "System logs synchronization"
+    extension_scenarios:
+      - condition: "EMR system is offline"
+        steps:
+          - "System queues synchronization attempt"
+          - "System retries after configured delay"
+    post_conditions:
+      - "EMR system has updated appointment data"
+      - "Synchronization is logged"
+    regulatory_requirements:
+      - "HIPAA: Secure transmission of patient data"
+      - "SOC2: Audit trail of all EMR sync attempts"
+    uat_criteria:
+      - "Appointment data synced to EMR"
+      - "Offline handling works correctly"
+      - "Secure transmission verified"
+
+metadata:
+  generated_at: "2026-04-21T01:00:00Z"
+  generated_by: "BA-Agent-v0.1"
+  schema_version: "0.1"

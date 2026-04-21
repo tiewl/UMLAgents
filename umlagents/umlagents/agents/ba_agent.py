@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from .base import BaseAgent
 from ..db.models import AgentRole, Project, Actor, UseCase, ArtifactType
+from ..utils.validation import YAMLValidator, ValidationError
 
 
 class BAAgent(BaseAgent):
@@ -76,6 +77,7 @@ class BAAgent(BaseAgent):
         1. If context has 'yaml_path': load and validate YAML
         2. If context has 'interactive': True: run interactive questionnaire
         3. If context has 'prompt': use natural language prompt (dice-game-agents compatibility)
+        4. If skip_existing=True and use cases exist: skip requirement elicitation
         
         Args:
             context: Dictionary with input parameters
@@ -91,11 +93,23 @@ class BAAgent(BaseAgent):
             return self._run_interactive_mode(context)
         elif mode == "prompt":
             return self._run_prompt_mode(context)
+        elif mode == "skip":
+            return self._run_skip_mode(context)
         else:
             raise ValueError(f"Unknown mode: {mode}")
     
     def _determine_mode(self, context: Dict[str, Any]) -> str:
         """Determine which mode to run based on context."""
+        # Check if we should skip because requirements already exist
+        if context.get("skip_existing", False) and self.project_id:
+            # Check if use cases already exist for this project
+            existing_use_cases = self.db.query(UseCase).filter(
+                UseCase.project_id == self.project_id
+            ).count()
+            if existing_use_cases > 0:
+                print(f"[{self.name}] Skipping BA - {existing_use_cases} use cases already exist")
+                return "skip"
+        
         if "yaml_path" in context:
             return "yaml"
         elif context.get("interactive"):
@@ -108,6 +122,14 @@ class BAAgent(BaseAgent):
             # Default to interactive if no other mode specified
             return "interactive"
     
+    def _run_skip_mode(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Skip requirement elicitation because use cases already exist."""
+        print(f"[{self.name}] Skipping requirement elicitation - use cases already exist")
+        # Ensure project_id is in context
+        if self.project_id:
+            context['project_id'] = self.project_id
+        return context
+
     def _run_yaml_mode(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Load and validate YAML use case specification.
@@ -124,12 +146,15 @@ class BAAgent(BaseAgent):
         print(f"[{self.name}] Loading YAML specification: {yaml_path}")
         print(f"{'='*60}")
         
-        # Load YAML
-        with open(yaml_path, 'r') as f:
-            yaml_data = yaml.safe_load(f)
-        
-        # Validate basic structure
-        self._validate_yaml_structure(yaml_data)
+        # Load and validate YAML using centralized validator
+        try:
+            yaml_data = YAMLValidator.validate_file(Path(yaml_path))
+            print(f"[{self.name}] ✓ YAML validation passed")
+        except ValidationError as e:
+            print(f"[{self.name}] ❌ YAML validation failed: {e.message}")
+            if e.field:
+                print(f"       Field: {e.field}")
+            raise
         
         # Create or load project in database
         project_id = self.create_or_load_project(
@@ -339,16 +364,13 @@ class BAAgent(BaseAgent):
         return context
     
     def _validate_yaml_structure(self, yaml_data: Dict[str, Any]) -> None:
-        """Validate YAML structure against expected schema."""
-        required_fields = ["project"]
-        for field in required_fields:
-            if field not in yaml_data:
-                raise ValueError(f"Missing required field: {field}")
-        
-        project_fields = ["name", "domain", "description"]
-        for field in project_fields:
-            if field not in yaml_data["project"]:
-                raise ValueError(f"Missing project field: {field}")
+        """
+        Validate YAML structure against UMLAgents schema.
+        Uses the centralized YAMLValidator for consistent validation.
+        """
+        # Note: This method is kept for backward compatibility
+        # The actual validation now happens in _run_yaml_mode
+        pass
     
     def _process_interactive_answers(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Process interactive answers into structured requirements."""

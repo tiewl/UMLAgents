@@ -1,0 +1,21 @@
+def command_integrate_dice_game(args):
+    """Run dice‑game‑agents pipeline and import outputs into UMLAgents database."""
+    try:
+        from umlagents.integration.dice_game.integrate import main as integrate_main
+    except ImportError as e:
+        print(f"❌ Integration module not found: {e}")
+        print("Make sure dice‑game‑agents repository is available at:")
+        print("  /home/picoclaw/.openclaw/workspace/dice-game-agents-ref")
+        return 1
+    
+    try:
+        # Run integration
+        integrate_main()
+        return 0
+    except Exception as e:
+        print(f"❌ Integration failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+
+def main():

@@ -9,6 +9,13 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 
+from ..utils.events import (
+    publish_agent_activity,
+    publish_artifact_generated,
+    publish_api_call,
+    publish_agent_status
+)
+
 from ..db.models import (
     Base, Project, Actor, UseCase, DesignDecision, PatternApplication, 
     Artifact, AuditLog, AgentRole, ArtifactType, init_db, get_session
@@ -44,9 +51,8 @@ class BaseAgent:
         self.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
         
         if not self.api_key or self.api_key == "your_deepseek_api_key_here":
-            raise ValueError(
-                "DEEPSEEK_API_KEY not set. Please set DEEPSEEK_API_KEY environment variable."
-            )
+            print(f"⚠️  WARNING: DEEPSEEK_API_KEY not set. AI features will be disabled.")
+            self.api_key = None
         
         # Database session
         if db_session:
@@ -77,6 +83,9 @@ class BaseAgent:
             API response text
         """
         import requests
+        
+        if not self.api_key:
+            raise ValueError("DeepSeek API key not configured. Cannot call AI API.")
         
         url = f"{self.base_url}/chat/completions"
         headers = {
@@ -162,7 +171,7 @@ class BaseAgent:
         content: str, 
         artifact_type: ArtifactType,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> None:
+    ) -> Optional[Artifact]:
         """
         Save artifact to file and record in database with content hash.
         
@@ -171,6 +180,9 @@ class BaseAgent:
             content: File content
             artifact_type: Type of artifact
             metadata: Additional metadata
+            
+        Returns:
+            Artifact object if saved with project context, else None
         """
         import os
         
@@ -184,6 +196,8 @@ class BaseAgent:
         # Calculate content hash
         content_hash = hashlib.sha256(content.encode('utf-8')).hexdigest()
         
+        artifact = None
+        
         # Record in database if we have a project
         if self.project_id:
             artifact = Artifact(
@@ -194,7 +208,7 @@ class BaseAgent:
                 content_hash=content_hash,
                 generated_by_agent=self.agent_role,
                 generation_time_ms=0,  # Would need timing instrumentation
-                metadata=metadata or {}
+                artifact_metadata=metadata or {}
             )
             self.db.add(artifact)
             self.db.commit()
@@ -212,17 +226,55 @@ class BaseAgent:
         )
         
         print(f"  -> Saved: {filepath} (hash: {content_hash[:8]}...)")
+        return artifact
     
     def _log_activity(self, activity: str, details: Dict[str, Any]) -> None:
         """
-        Log activity to audit trail.
+        Log activity to audit trail and publish event.
         
         Args:
             activity: Activity description
             details: Structured details
         """
+        # Publish event regardless of project context (for monitoring)
+        try:
+            if activity in ["api_call_start", "api_call_success", "api_call_failed"]:
+                status = activity.replace("api_call_", "")
+                publish_api_call(
+                    agent_name=self.name,
+                    status=status,
+                    endpoint=details.get("endpoint", "/v1/chat/completions"),
+                    duration_ms=details.get("elapsed_ms"),
+                    error=details.get("error"),
+                    project_id=self.project_id
+                )
+            elif activity == "artifact_generated":
+                publish_artifact_generated(
+                    agent_name=self.name,
+                    artifact_type=details.get("artifact_type", "unknown"),
+                    filepath=details.get("filepath", ""),
+                    project_id=self.project_id,
+                    content_hash=details.get("content_hash"),
+                    content_length=details.get("content_length")
+                )
+            elif activity == "project_created":
+                # Project creation already handled in create_or_load_project
+                pass
+            
+            # Always publish general agent activity
+            publish_agent_activity(
+                agent_name=self.name,
+                activity=activity,
+                project_id=self.project_id,
+                details=details
+            )
+        except Exception as e:
+            # Don't let event publishing break the agent
+            print(f"[{self.name}] Warning: Failed to publish event: {e}")
+        
+        # Original audit logging (requires project context)
         if not self.project_id:
-            return  # Can't log without project context
+            return  # Can't log to audit trail without project context
             
         audit_log = AuditLog(
             project_id=self.project_id,
@@ -235,6 +287,24 @@ class BaseAgent:
         self.db.add(audit_log)
         self.db.commit()
     
+    def log_activity(self, action: str, details: Dict[str, Any]) -> None:
+        """
+        Public wrapper for _log_activity.
+        """
+        self._log_activity(action, details)
+    
+    def log_info(self, message: str) -> None:
+        """
+        Log informational message.
+        """
+        print(f"[{self.name}] INFO: {message}")
+    
+    def log_warning(self, message: str) -> None:
+        """
+        Log warning message.
+        """
+        print(f"[{self.name}] WARNING: {message}")
+
     def create_or_load_project(
         self, 
         name: str, 

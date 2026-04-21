@@ -34,6 +34,7 @@ class AgentRole(enum.Enum):
     DEVELOPER = "developer"
     TESTER = "tester"
     DEPLOYER = "deployer"
+    ORCHESTRATOR = "orchestrator"
 
 class PatternCategory(enum.Enum):
     """GRASP and GoF pattern categories"""
@@ -177,6 +178,7 @@ class Artifact(Base):
     content_hash = Column(String(64))  # SHA-256 for change detection
     generated_by_agent = Column(Enum(AgentRole))
     generation_time_ms = Column(Integer)  # How long generation took
+    artifact_metadata = Column(JSON)  # Additional structured metadata
     created_at = Column(DateTime, default=func.now())
     
     # Relationships

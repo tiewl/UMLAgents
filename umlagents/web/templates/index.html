@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UMLAgents - From Conversation to Compliant Code</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Highlight.js for code syntax -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script>hljs.highlightAll();</script>
+    <style>
+        .websocket-connected { background-color: #10b981 !important; }
+        .websocket-disconnected { background-color: #ef4444 !important; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        .progress-bar {
+            transition: width 0.5s ease-in-out;
+        }
+        .plantuml-diagram {
+            max-width: 100%;
+            height: auto;
+        }
+        .log-success { color: #10b981; }
+        .log-info { color: #3b82f6; }
+        .log-warning { color: #f59e0b; }
+        .log-error { color: #ef4444; }
+        .agent-ba { border-left-color: #3b82f6; }
+        .agent-architect { border-left-color: #8b5cf6; }
+        .agent-design { border-left-color: #ec4899; }
+        .agent-developer { border-left-color: #10b981; }
+        .agent-tester { border-left-color: #f59e0b; }
+        .agent-deployer { border-left-color: #6366f1; }
+        .agent-orchestrator { border-left-color: #000000; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div class="min-h-screen">
+        <!-- Header -->
+        <header class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between items-center py-4">
+                    <div class="flex items-center">
+                        <div class="bg-indigo-600 text-white p-2 rounded-lg mr-3">
+                            <i class="fas fa-sitemap text-xl"></i>
+                        </div>
+                        <div>
+                            <h1 class="text-2xl font-bold text-gray-900">UMLAgents</h1>
+                            <p class="text-sm text-gray-500">From conversation to compliant code</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <div id="connection-status" class="flex items-center px-3 py-1 rounded-full bg-red-100 text-red-800">
+                            <i class="fas fa-plug mr-2"></i>
+                            <span>Disconnected</span>
+                        </div>
+                        <div class="text-sm text-gray-500" id="current-time">
+                            Loading...
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                <!-- Left Sidebar - Navigation -->
+                <div class="lg:col-span-1">
+                    <div class="bg-white rounded-lg shadow p-4 mb-6">
+                        <h2 class="font-bold text-lg mb-4 text-gray-700"><i class="fas fa-bars mr-2"></i> Navigation</h2>
+                        <nav class="space-y-2">
+                            <a href="#" class="tab-link block px-4 py-2 rounded bg-indigo-50 text-indigo-700 font-medium" data-tab="dashboard">
+                                <i class="fas fa-tachometer-alt mr-2"></i> Dashboard
+                            </a>
+                            <a href="#" class="tab-link block px-4 py-2 rounded hover:bg-gray-100 text-gray-700" data-tab="projects">
+                                <i class="fas fa-project-diagram mr-2"></i> Projects
+                            </a>
+                            <a href="#" class="tab-link block px-4 py-2 rounded hover:bg-gray-100 text-gray-700" data-tab="pipeline">
+                                <i class="fas fa-stream mr-2"></i> Pipeline Control
+                            </a>
+                            <a href="#" class="tab-link block px-4 py-2 rounded hover:bg-gray-100 text-gray-700" data-tab="requirements">
+                                <i class="fas fa-comments mr-2"></i> Requirements
+                            </a>
+                            <a href="#" class="tab-link block px-4 py-2 rounded hover:bg-gray-100 text-gray-700" data-tab="artifacts">
+                                <i class="fas fa-file-code mr-2"></i> Artifacts
+                            </a>
+                            <a href="#" class="tab-link block px-4 py-2 rounded hover:bg-gray-100 text-gray-700" data-tab="logs">
+                                <i class="fas fa-history mr-2"></i> Audit Logs
+                            </a>
+                        </nav>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="font-bold text-lg mb-3 text-gray-700"><i class="fas fa-info-circle mr-2"></i> Quick Stats</h3>
+                        <div class="space-y-3">
+                            <div>
+                                <div class="text-sm text-gray-500">Active Projects</div>
+                                <div class="text-2xl font-bold" id="stats-projects">0</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500">Total Artifacts</div>
+                                <div class="text-2xl font-bold" id="stats-artifacts">0</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500">WebSocket Connections</div>
+                                <div class="text-2xl font-bold" id="stats-connections">0</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Content Area -->
+                <div class="lg:col-span-3">
+                    <!-- Dashboard Tab -->
+                    <div id="dashboard" class="tab-content active">
+                        <div class="bg-white rounded-lg shadow p-6 mb-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Dashboard</h2>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="bg-indigo-50 p-4 rounded-lg">
+                                    <h3 class="font-bold text-lg mb-2 text-indigo-700"><i class="fas fa-play-circle mr-2"></i> Quick Start</h3>
+                                    <p class="text-gray-600 mb-4">Start a new project or run existing pipeline.</p>
+                                    <button id="btn-new-project" class="bg-indigo-600 text-white px-4 py-2 rounded mr-2 hover:bg-indigo-700">
+                                        <i class="fas fa-plus mr-1"></i> New Project
+                                    </button>
+                                    <button id="btn-run-demo" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                        <i class="fas fa-play mr-1"></i> Run Demo
+                                    </button>
+                                </div>
+                                <div class="bg-green-50 p-4 rounded-lg">
+                                    <h3 class="font-bold text-lg mb-2 text-green-700"><i class="fas fa-check-circle mr-2"></i> Recent Activity</h3>
+                                    <div id="recent-activity" class="space-y-2">
+                                        <div class="text-sm text-gray-600">No recent activity</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Agent Pipeline Status</h2>
+                            <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
+                                <div class="agent-card agent-ba border-l-4 p-3 bg-blue-50">
+                                    <div class="font-bold text-blue-700">BA Agent</div>
+                                    <div class="text-sm text-gray-600">Requirements</div>
+                                    <div class="text-xs mt-1" id="agent-status-ba">Ready</div>
+                                </div>
+                                <div class="agent-card agent-architect border-l-4 p-3 bg-purple-50">
+                                    <div class="font-bold text-purple-700">Architect</div>
+                                    <div class="text-sm text-gray-600">Diagrams</div>
+                                    <div class="text-xs mt-1" id="agent-status-architect">Ready</div>
+                                </div>
+                                <div class="agent-card agent-design border-l-4 p-3 bg-pink-50">
+                                    <div class="font-bold text-pink-700">Design</div>
+                                    <div class="text-sm text-gray-600">Patterns</div>
+                                    <div class="text-xs mt-1" id="agent-status-design">Ready</div>
+                                </div>
+                                <div class="agent-card agent-developer border-l-4 p-3 bg-green-50">
+                                    <div class="font-bold text-green-700">Developer</div>
+                                    <div class="text-sm text-gray-600">Code</div>
+                                    <div class="text-xs mt-1" id="agent-status-developer">Ready</div>
+                                </div>
+                                <div class="agent-card agent-tester border-l-4 p-3 bg-yellow-50">
+                                    <div class="font-bold text-yellow-700">Tester</div>
+                                    <div class="text-sm text-gray-600">Tests</div>
+                                    <div class="text-xs mt-1" id="agent-status-tester">Ready</div>
+                                </div>
+                                <div class="agent-card agent-deployer border-l-4 p-3 bg-indigo-50">
+                                    <div class="font-bold text-indigo-700">Deployer</div>
+                                    <div class="text-sm text-gray-600">Deploy</div>
+                                    <div class="text-xs mt-1" id="agent-status-deployer">Ready</div>
+                                </div>
+                                <div class="agent-card agent-orchestrator border-l-4 p-3 bg-gray-100">
+                                    <div class="font-bold text-gray-700">Orchestrator</div>
+                                    <div class="text-sm text-gray-600">Control</div>
+                                    <div class="text-xs mt-1" id="agent-status-orchestrator">Ready</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Projects Tab -->
+                    <div id="projects" class="tab-content">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <div class="flex justify-between items-center mb-6">
+                                <h2 class="text-2xl font-bold text-gray-800">Projects</h2>
+                                <button id="btn-create-project" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                                    <i class="fas fa-plus mr-1"></i> Create Project
+                                </button>
+                            </div>
+                            <div id="projects-list" class="space-y-4">
+                                <div class="text-center py-8 text-gray-500">
+                                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                    <div>Loading projects...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pipeline Control Tab -->
+                    <div id="pipeline" class="tab-content">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Pipeline Control</h2>
+                            
+                            <div class="mb-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Select Project</h3>
+                                <select id="pipeline-project" class="w-full p-2 border rounded">
+                                    <option value="">Loading projects...</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Agent Selection</h3>
+                                <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="BAAgent" checked> BA Agent
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="ArchitectAgent" checked> Architect
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="DesignAgent" checked> Design
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="DeveloperAgent" checked> Developer
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="TesterAgent" checked> Tester
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="DeployerAgent" checked> Deployer
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="all" id="select-all-agents"> All Agents
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="mb-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Pipeline Progress</h3>
+                                <div class="bg-gray-100 rounded h-4 mb-2">
+                                    <div id="pipeline-progress-bar" class="progress-bar bg-green-600 h-4 rounded" style="width: 0%"></div>
+                                </div>
+                                <div class="flex justify-between text-sm text-gray-600">
+                                    <span id="pipeline-status">Ready</span>
+                                    <span id="pipeline-progress-text">0%</span>
+                                </div>
+                            </div>
+
+                            <div class="flex space-x-4">
+                                <button id="btn-start-pipeline" class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">
+                                    <i class="fas fa-play mr-1"></i> Start Pipeline
+                                </button>
+                                <button id="btn-stop-pipeline" class="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700" disabled>
+                                    <i class="fas fa-stop mr-1"></i> Stop
+                                </button>
+                                <button id="btn-clear-logs" class="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700">
+                                    <i class="fas fa-trash mr-1"></i> Clear Logs
+                                </button>
+                            </div>
+
+                            <div class="mt-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Live Logs</h3>
+                                <div id="pipeline-logs" class="bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm h-64 overflow-y-auto">
+                                    <div class="text-gray-400">Pipeline logs will appear here...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Requirements Tab -->
+                    <div id="requirements" class="tab-content">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Interactive Requirements</h2>
+                            
+                            <div class="mb-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Create New Requirements</h3>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                        <input type="text" id="req-project-name" class="w-full p-2 border rounded" placeholder="e.g., Banking System">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Domain</label>
+                                        <input type="text" id="req-domain" class="w-full p-2 border rounded" placeholder="e.g., Finance, Healthcare">
+                                    </div>
+                                </div>
+                                <button id="btn-start-interactive" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">
+                                    <i class="fas fa-comments mr-1"></i> Start Interactive Session
+                                </button>
+                            </div>
+
+                            <div id="interactive-session" class="hidden">
+                                <div class="mb-6 bg-blue-50 p-4 rounded">
+                                    <h4 class="font-bold text-lg mb-2 text-blue-700">Interactive Session</h4>
+                                    <div class="mb-3">
+                                        <div class="text-sm text-gray-600">Question <span id="question-number">1</span> of <span id="total-questions">5</span></div>
+                                        <div class="text-lg font-medium mt-2" id="current-question">Loading question...</div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="block text-sm font-medium text-gray-700 mb-1">Your Answer</label>
+                                        <textarea id="answer-input" class="w-full p-2 border rounded h-32" placeholder="Type your answer here..."></textarea>
+                                    </div>
+                                    <button id="btn-submit-answer" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                        <i class="fas fa-paper-plane mr-1"></i> Submit Answer
+                                    </button>
+                                    <button id="btn-skip-question" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 ml-2">
+                                        <i class="fas fa-forward mr-1"></i> Skip
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="mt-6">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Load YAML Requirements</h3>
+                                <div class="flex items-center">
+                                    <input type="text" id="yaml-path" class="flex-grow p-2 border rounded mr-2" placeholder="Path to YAML file (e.g., examples/dice-game-example.yaml)">
+                                    <button id="btn-load-yaml" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                        <i class="fas fa-upload mr-1"></i> Load YAML
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Artifacts Tab -->
+                    <div id="artifacts" class="tab-content">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Generated Artifacts</h2>
+                            
+                            <div class="mb-6">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="font-bold text-lg text-gray-700">Select Project</h3>
+                                    <button id="btn-refresh-artifacts" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                                        <i class="fas fa-sync-alt mr-1"></i> Refresh
+                                    </button>
+                                </div>
+                                <select id="artifacts-project" class="w-full p-2 border rounded mt-2">
+                                    <option value="">Loading projects...</option>
+                                </select>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <div class="bg-gray-50 p-4 rounded">
+                                    <h4 class="font-bold text-lg mb-2 text-gray-700">Artifact Types</h4>
+                                    <div id="artifact-types" class="space-y-2">
+                                        <!-- Will be populated by JavaScript -->
+                                    </div>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <div class="bg-gray-50 p-4 rounded">
+                                        <h4 class="font-bold text-lg mb-2 text-gray-700">Artifact List</h4>
+                                        <div id="artifact-list" class="space-y-2">
+                                            <div class="text-gray-500 text-center py-4">Select a project to view artifacts</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="artifact-preview" class="hidden">
+                                <h3 class="font-bold text-lg mb-3 text-gray-700">Artifact Preview</h3>
+                                <div class="bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm h-96 overflow-y-auto">
+                                    <pre><code id="artifact-content">Select an artifact to preview its content</code></pre>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Audit Logs Tab -->
+                    <div id="logs" class="tab-content">
+                        <div class="bg-white rounded-lg shadow p-6">
+                            <h2 class="text-2xl font-bold mb-6 text-gray-800">Audit Logs</h2>
+                            
+                            <div class="mb-6">
+                                <div class="flex justify-between items-center">
+                                    <h3 class="font-bold text-lg text-gray-700">Select Project</h3>
+                                    <button id="btn-refresh-logs" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700">
+                                        <i class="fas fa-sync-alt mr-1"></i> Refresh
+                                    </button>
+                                </div>
+                                <select id="logs-project" class="w-full p-2 border rounded mt-2">
+                                    <option value="">Loading projects...</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-4">
+                                <div class="flex space-x-4">
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="log-level" value="success" checked> Success
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="log-level" value="info" checked> Info
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="log-level" value="warning" checked> Warning
+                                    </label>
+                                    <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="log-level" value="error" checked> Error
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div id="audit-logs" class="space-y-3">
+                                <div class="text-center py-8 text-gray-500">
+                                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                                    <div>Select a project to view audit logs</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t mt-8">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                <div class="text-center text-gray-500 text-sm">
+                    <p>UMLAgents &copy; 2026 - From conversation to compliant code</p>
+                    <p class="mt-1">Real‑time monitoring via WebSocket | SQLite audit trail | Larman OOA/OOD methodology</p>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <!-- JavaScript -->
+    <script>
+        // WebSocket connection
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 5;
+        
+        // Application state
+        let appState = {
+            projects: [],
+            currentProjectId: null,
+            activePipeline: false,
+            interactiveSession: null,
+            selectedArtifacts: []
+        };
+
+        // DOM Elements
+        const connectionStatus = document.getElementById('connection-status');
+        const currentTime = document.getElementById('current-time');
+        const recentActivity = document.getElementById('recent-activity');
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Setup tab navigation
+            setupTabs();
+            
+            // Setup buttons
+            setupButtons();
+            
+            // Connect to WebSocket
+            connectWebSocket();
+            
+            // Update time
+            updateCurrentTime();
+            setInterval(updateCurrentTime, 1000);
+            
+            // Load initial data
+            loadProjects();
+            
+            // Setup event listeners
+            document.getElementById('select-all-agents').addEventListener('change', function(e) {
+                const checkboxes = document.querySelectorAll('input[name="agents"]');
+                checkboxes.forEach(cb => {
+                    if (cb.value !== 'all') {
+                        cb.checked = e.target.checked;
+                    }
+                });
+            });
+            
+            // Artifact project change
+            document.getElementById('artifacts-project').addEventListener('change', function() {
+                if (this.value) {
+                    loadArtifacts(this.value);
+                }
+            });
+            
+            // Logs project change
+            document.getElementById('logs-project').addEventListener('change', function() {
+                if (this.value) {
+                    loadAuditLogs(this.value);
+                }
+            });
+        });
+
+        // Tab navigation
+        function setupTabs() {
+            const tabLinks = document.querySelectorAll('.tab-link');
+            tabLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const tabId = this.getAttribute('data-tab');
+                    
+                    // Update active tab link
+                    tabLinks.forEach(l => l.classList.remove('bg-indigo-50', 'text-indigo-700', 'font-medium'));
+                    tabLinks.forEach(l => l.classList.add('hover:bg-gray-100', 'text-gray-700'));
+                    this.classList.remove('hover:bg-gray-100', 'text-gray-700');
+                    this.classList.add('bg-indigo-50', 'text-indigo-700', 'font-medium');
+                    
+                    // Show selected tab content
+                    document.querySelectorAll('.tab-content').forEach(content => {
+                        content.classList.remove('active');
+                    });
+                    document.getElementById(tabId).classList.add('active');
+                });
+            });
+        }
+
+        // Button setup
+        function setupButtons() {
+            // New Project
+            document.getElementById('btn-new-project').addEventListener('click', function() {
+                document.querySelector('.tab-link[data-tab="projects"]').click();
+                document.getElementById('btn-create-project').click();
+            });
+            
+            // Run Demo
+            document.getElementById('btn-run-demo').addEventListener('click', function() {
+                startPipeline(1, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'DeployerAgent']);
+            });
+            
+            // Create Project
+            document.getElementById('btn-create-project').addEventListener('click', async function() {
+                const name = prompt('Enter project name:');
+                if (!name) return;
+                
+                const domain = prompt('Enter project domain (e.g., Finance, Healthcare):') || 'General';
+                
+                try {
+                    const response = await fetch('/api/projects', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ name, domain, description: '' })
+                    });
+                    
+                    if (response.ok) {
+                        const project = await response.json();
+                        addActivity(`Project "${name}" created`, 'success');
+                        loadProjects();
+                    } else {
+                        addActivity('Failed to create project', 'error');
+                    }
+                } catch (error) {
+                    addActivity('Error creating project: ' + error.message, 'error');
+                }
+            });
+            
+            // Start Pipeline
+            document.getElementById('btn-start-pipeline').addEventListener('click', function() {
+                const projectId = document.getElementById('pipeline-project').value;
+                if (!projectId) {
+                    alert('Please select a project first');
+                    return;
+                }
+                
+                const agents = Array.from(document.querySelectorAll('input[name="agents"]:checked'))
+                    .filter(cb => cb.value !== 'all')
+                    .map(cb => cb.value);
+                
+                if (agents.length === 0) {
+                    alert('Please select at least one agent');
+                    return;
+                }
+                
+                startPipeline(projectId, agents);
+            });
+            
+            // Start Interactive Session
+            document.getElementById('btn-start-interactive').addEventListener('click', function() {
+                const projectName = document.getElementById('req-project-name').value;
+                const domain = document.getElementById('req-domain').value;
+                
+                if (!projectName) {
+                    alert('Please enter a project name');
+                    return;
+                }
+                
+                startInteractiveBA(projectName, domain);
+            });
+            
+            // Load YAML
+            document.getElementById('btn-load-yaml').addEventListener('click', function() {
+                const yamlPath = document.getElementById('yaml-path').value;
+                if (!yamlPath) {
+                    alert('Please enter a YAML file path');
+                    return;
+                }
+                
+                loadYAML(yamlPath);
+            });
+            
+            // Refresh buttons
+            document.getElementById('btn-refresh-artifacts').addEventListener('click', function() {
+                const projectId = document.getElementById('artifacts-project').value;
+                if (projectId) {
+                    loadArtifacts(projectId);
+                }
+            });
+            
+            document.getElementById('btn-refresh-logs').addEventListener('click', function() {
+                const projectId = document.getElementById('logs-project').value;
+                if (projectId) {
+                    loadAuditLogs(projectId);
+                }
+            });
+            
+            // Clear logs
+            document.getElementById('btn-clear-logs').addEventListener('click', function() {
+                document.getElementById('pipeline-logs').innerHTML = '<div class="text-gray-400">Pipeline logs cleared</div>';
+            });
+        }
+
+        // WebSocket functions
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = function() {
+                console.log('WebSocket connected');
+                connectionStatus.className = 'flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 websocket-connected';
+                connectionStatus.innerHTML = '<i class="fas fa-plug mr-2"></i><span>Connected</span>';
+                reconnectAttempts = 0;
+                addActivity('WebSocket connected', 'success');
+            };
+            
+            ws.onclose = function() {
+                console.log('WebSocket disconnected');
+                connectionStatus.className = 'flex items-center px-3 py-1 rounded-full bg-red-100 text-red-800 websocket-disconnected';
+                connectionStatus.innerHTML = '<i class="fas fa-plug mr-2"></i><span>Disconnected</span>';
+                
+                // Try to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    reconnectAttempts++;
+                    setTimeout(() => {
+                        addActivity(`Reconnecting... (attempt ${reconnectAttempts}/${maxReconnectAttempts})`, 'warning');
+                        connectWebSocket();
+                    }, 3000);
+                }
+            };
+            
+            ws.onerror = function(error) {
+                console.error('WebSocket error:', error);
+                addActivity('WebSocket error occurred', 'error');
+            };
+            
+            ws.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    console.error('Error parsing WebSocket message:', error);
+                }
+            };
+        }
+
+        function handleWebSocketMessage(message) {
+            console.log('WebSocket message:', message);
+            
+            switch (message.type) {
+                case 'connected':
+                    addActivity(message.message, 'info');
+                    break;
+                    
+                case 'pipeline_started':
+                    addActivity(`Pipeline started for project ${message.project_id}`, 'info');
+                    updatePipelineStatus('Starting...', 10);
+                    break;
+                    
+                case 'pipeline_progress':
+                    addActivity(`Pipeline progress: ${message.message}`, 'info');
+                    updatePipelineStatus(message.message, 30);
+                    break;
+                    
+                case 'pipeline_completed':
+                    addActivity(`Pipeline completed in ${message.result.total_time_ms}ms`, 'success');
+                    updatePipelineStatus('Completed', 100);
+                    updateAgentStatuses(message.result.agents_executed);
+                    break;
+                    
+                case 'pipeline_error':
+                    addActivity(`Pipeline error: ${message.message}`, 'error');
+                    updatePipelineStatus('Failed', 0);
+                    break;
+                    
+                case 'project_created':
+                    addActivity(`Project created: ${message.project.name}`, 'success');
+                    loadProjects();
+                    break;
+                    
+                case 'ba_interactive_started':
+                    startInteractiveSessionUI(message.project_name, message.domain);
+                    break;
+                    
+                case 'ba_question':
+                    showInteractiveQuestion(message.question, message.question_number, message.total_questions);
+                    break;
+                    
+                case 'ba_completed':
+                    endInteractiveSessionUI(message.project_name);
+                    break;
+                    
+                case 'project_status':
+                    updateProjectUI(message);
+                    break;
+                    
+                case 'artifact_content':
+                    showArtifactContent(message);
+                    break;
+                    
+                case 'error':
+                    addActivity(`Error: ${message.message}`, 'error');
+                    break;
+                
+                case 'event':
+                    // Handle UMLAgents events
+                    const eventType = message.event_type;
+                    const eventData = message.data;
+                    let eventMessage = `${eventType}`;
+                    if (eventData.agent) {
+                        eventMessage = `${eventData.agent}: ${eventType}`;
+                    }
+                    if (eventData.activity) {
+                        eventMessage = `${eventData.agent || 'System'}: ${eventData.activity}`;
+                    }
+                    addActivity(eventMessage, 'info');
+                    console.log('Event received:', message);
+                    break;
+            }
+        }
+
+        function sendWebSocketMessage(message) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(message));
+            } else {
+                console.warn('WebSocket not connected');
+                addActivity('Cannot send message: WebSocket not connected', 'error');
+            }
+        }
+
+        // API functions
+        async function loadProjects() {
+            try {
+                const response = await fetch('/api/projects');
+                if (response.ok) {
+                    const data = await response.json();
+                    appState.projects = data.projects || [];
+                    updateProjectsUI();
+                    updateStats();
+                }
+            } catch (error) {
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        function updateProjectsUI() {
+            const projectsList = document.getElementById('projects-list');
+            const pipelineSelect = document.getElementById('pipeline-project');
+            const artifactsSelect = document.getElementById('artifacts-project');
+            const logsSelect = document.getElementById('logs-project');
+            
+            if (appState.projects.length === 0) {
+                projectsList.innerHTML = `
+                    <div class="text-center py-8 text-gray-500">
+                        <i class="fas fa-folder-open text-3xl mb-2"></i>
+                        <div>No projects yet</div>
+                        <button id="btn-create-first-project" class="mt-4 bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">
+                            Create First Project
+                        </button>
+                    </div>
+                `;
+                
+                // Add event listener to the new button
+                setTimeout(() => {
+                    const btn = document.getElementById('btn-create-first-project');
+                    if (btn) btn.addEventListener('click', () => document.getElementById('btn-create-project').click());
+                }, 100);
+                
+                // Update selects
+                const noProjectsOption = '<option value="">No projects available</option>';
+                pipelineSelect.innerHTML = noProjectsOption;
+                artifactsSelect.innerHTML = noProjectsOption;
+                logsSelect.innerHTML = noProjectsOption;
+                
+                return;
+            }
+            
+            // Update projects list
+            projectsList.innerHTML = appState.projects.map(project => `
+                <div class="border rounded-lg p-4 hover:bg-gray-50">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <h3 class="font-bold text-lg">${project.name}</h3>
+                            <p class="text-sm text-gray-600">${project.domain} • Created ${new Date(project.created_at).toLocaleDateString()}</p>
+                            <span class="inline-block px-2 py-1 text-xs rounded mt-2 ${getPhaseColor(project.current_phase)}">${project.current_phase || 'INCEPTION'}</span>
+                        </div>
+                        <div class="space-x-2">
+                            <button class="view-project-btn bg-blue-600 text-white px-3 py-1 rounded text-sm" data-id="${project.id}">
+                                <i class="fas fa-eye mr-1"></i> View
+                            </button>
+                            <button class="run-project-btn bg-green-600 text-white px-3 py-1 rounded text-sm" data-id="${project.id}">
+                                <i class="fas fa-play mr-1"></i> Run
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            // Update select dropdowns
+            const options = appState.projects.map(p => `<option value="${p.id}">${p.name} (${p.current_phase || 'INCEPTION'})</option>`).join('');
+            pipelineSelect.innerHTML = `<option value="">Select a project</option>${options}`;
+            artifactsSelect.innerHTML = `<option value="">Select a project</option>${options}`;
+            logsSelect.innerHTML = `<option value="">Select a project</option>${options}`;
+            
+            // Add event listeners to project buttons
+            document.querySelectorAll('.view-project-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const projectId = this.getAttribute('data-id');
+                    viewProjectDetails(projectId);
+                });
+            });
+            
+            document.querySelectorAll('.run-project-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const projectId = this.getAttribute('data-id');
+                    startPipeline(projectId, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'DeployerAgent']);
+                });
+            });
+        }
+
+        function getPhaseColor(phase) {
+            const colors = {
+                'INCEPTION': 'bg-blue-100 text-blue-800',
+                'ELABORATION': 'bg-purple-100 text-purple-800',
+                'CONSTRUCTION': 'bg-green-100 text-green-800',
+                'TRANSITION': 'bg-yellow-100 text-yellow-800'
+            };
+            return colors[phase] || 'bg-gray-100 text-gray-800';
+        }
+
+        async function loadArtifacts(projectId) {
+            try {
+                const response = await fetch(`/api/projects/${projectId}`);
+                if (response.ok) {
+                    const project = await response.json();
+                    updateArtifactsUI(project.artifacts || []);
+                }
+            } catch (error) {
+                console.error('Error loading artifacts:', error);
+            }
+        }
+
+        function updateArtifactsUI(artifacts) {
+            // Group artifacts by type
+            const byType = {};
+            artifacts.forEach(artifact => {
+                const type = artifact.artifact_type || 'unknown';
+                if (!byType[type]) byType[type] = [];
+                byType[type].push(artifact);
+            });
+            
+            // Update artifact types list
+            const typesHtml = Object.entries(byType).map(([type, items]) => `
+                <div class="p-2 bg-white rounded border">
+                    <div class="font-medium">${type}</div>
+                    <div class="text-sm text-gray-600">${items.length} item${items.length !== 1 ? 's' : ''}</div>
+                </div>
+            `).join('');
+            
+            document.getElementById('artifact-types').innerHTML = typesHtml || '<div class="text-gray-500">No artifacts</div>';
+            
+            // Update artifact list
+            const listHtml = artifacts.map(artifact => `
+                <div class="p-3 bg-white rounded border hover:bg-gray-50 cursor-pointer artifact-item" data-id="${artifact.id}">
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <div class="font-medium">${artifact.name}</div>
+                            <div class="text-sm text-gray-600">${artifact.artifact_type || 'unknown'}</div>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            ${new Date(artifact.created_at).toLocaleTimeString()}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            document.getElementById('artifact-list').innerHTML = listHtml || '<div class="text-gray-500">No artifacts</div>';
+            
+            // Add click listeners
+            document.querySelectorAll('.artifact-item').forEach(item => {
+                item.addEventListener('click', function() {
+                    const artifactId = this.getAttribute('data-id');
+                    loadArtifactContent(artifactId);
+                });
+            });
+        }
+
+        async function loadArtifactContent(artifactId) {
+            try {
+                const response = await fetch(`/api/artifacts/${artifactId}/content`);
+                if (response.ok) {
+                    const artifact = await response.json();
+                    showArtifactContent(artifact);
+                }
+            } catch (error) {
+                console.error('Error loading artifact content:', error);
+            }
+        }
+
+        function showArtifactContent(artifact) {
+            document.getElementById('artifact-preview').classList.remove('hidden');
+            
+            const contentElement = document.getElementById('artifact-content');
+            contentElement.textContent = artifact.content || '(No content)';
+            contentElement.className = artifact.artifact_type === 'source_code' ? 'python' : '';
+            
+            // Re-highlight syntax
+            if (hljs) {
+                hljs.highlightElement(contentElement);
+            }
+        }
+
+        async function loadAuditLogs(projectId) {
+            try {
+                sendWebSocketMessage({
+                    type: 'get_project_status',
+                    project_id: parseInt(projectId)
+                });
+            } catch (error) {
+                console.error('Error loading audit logs:', error);
+            }
+        }
+
+        function updateProjectUI(projectData) {
+            const logsContainer = document.getElementById('audit-logs');
+            
+            if (!projectData.audit_logs || projectData.audit_logs.length === 0) {
+                logsContainer.innerHTML = '<div class="text-center py-8 text-gray-500">No audit logs found</div>';
+                return;
+            }
+            
+            const logsHtml = projectData.audit_logs.map(log => `
+                <div class="p-3 bg-gray-50 rounded border">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-medium">${log.activity || 'Unknown activity'}</div>
+                            <div class="text-sm text-gray-600">Agent: ${log.agent_role || 'System'}</div>
+                            ${log.details ? `<div class="text-xs text-gray-500 mt-1">${JSON.stringify(log.details)}</div>` : ''}
+                        </div>
+                        <div class="text-sm text-gray-500 text-right">
+                            <div>${new Date(log.timestamp).toLocaleDateString()}</div>
+                            <div>${new Date(log.timestamp).toLocaleTimeString()}</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+            
+            logsContainer.innerHTML = logsHtml;
+        }
+
+        // Pipeline functions
+        function startPipeline(projectId, agents) {
+            sendWebSocketMessage({
+                type: 'pipeline_start',
+                project_id: parseInt(projectId),
+                agents: agents
+            });
+            
+            // Switch to pipeline tab
+            document.querySelector('.tab-link[data-tab="pipeline"]').click();
+            
+            // Update UI
+            document.getElementById('pipeline-project').value = projectId;
+            updatePipelineStatus('Starting pipeline...', 0);
+            
+            // Enable stop button
+            document.getElementById('btn-stop-pipeline').disabled = false;
+        }
+
+        function updatePipelineStatus(status, progress) {
+            document.getElementById('pipeline-status').textContent = status;
+            document.getElementById('pipeline-progress-bar').style.width = `${progress}%`;
+            document.getElementById('pipeline-progress-text').textContent = `${progress}%`;
+        }
+
+        function updateAgentStatuses(agentsExecuted) {
+            // Reset all agents to ready
+            document.querySelectorAll('[id^="agent-status-"]').forEach(el => {
+                el.textContent = 'Ready';
+                el.className = 'text-xs mt-1';
+            });
+            
+            // Update executed agents
+            if (agentsExecuted) {
+                agentsExecuted.forEach(agent => {
+                    const agentName = agent.agent.toLowerCase().replace('agent', '').trim();
+                    const element = document.getElementById(`agent-status-${agentName}`);
+                    if (element) {
+                        element.textContent = agent.status === 'success' ? '✓ Completed' : '✗ Failed';
+                        element.className = `text-xs mt-1 ${agent.status === 'success' ? 'text-green-600' : 'text-red-600'}`;
+                    }
+                });
+            }
+        }
+
+        // Interactive BA functions
+        function startInteractiveBA(projectName, domain) {
+            sendWebSocketMessage({
+                type: 'ba_interactive',
+                project_name: projectName,
+                domain: domain
+            });
+            
+            document.getElementById('interactive-session').classList.remove('hidden');
+        }
+
+        function startInteractiveSessionUI(projectName, domain) {
+            addActivity(`Interactive BA started for "${projectName}"`, 'info');
+            document.querySelector('.tab-link[data-tab="requirements"]').click();
+        }
+
+        function showInteractiveQuestion(question, current, total) {
+            document.getElementById('current-question').textContent = question;
+            document.getElementById('question-number').textContent = current;
+            document.getElementById('total-questions').textContent = total;
+            document.getElementById('answer-input').value = '';
+            
+            addActivity(`Question ${current}/${total}: ${question}`, 'info');
+        }
+
+        function endInteractiveSessionUI(projectName) {
+            document.getElementById('interactive-session').classList.add('hidden');
+            addActivity(`Interactive BA completed for "${projectName}"`, 'success');
+            alert(`Interactive session completed for "${projectName}". Project created.`);
+            loadProjects();
+        }
+
+        function loadYAML(yamlPath) {
+            sendWebSocketMessage({
+                type: 'load_yaml',
+                yaml_path: yamlPath
+            });
+            addActivity(`Loading YAML: ${yamlPath}`, 'info');
+        }
+
+        // Utility functions
+        function updateCurrentTime() {
+            const now = new Date();
+            currentTime.textContent = now.toLocaleTimeString() + ' ' + now.toLocaleDateString();
+        }
+
+        function addActivity(message, level = 'info') {
+            const activityDiv = document.getElementById('recent-activity');
+            const timestamp = new Date().toLocaleTimeString();
+            
+            const levelIcons = {
+                'success': 'fa-check-circle text-green-500',
+                'info': 'fa-info-circle text-blue-500',
+                'warning': 'fa-exclamation-circle text-yellow-500',
+                'error': 'fa-times-circle text-red-500'
+            };
+            
+            const activityHtml = `
+                <div class="flex items-center text-sm">
+                    <i class="fas ${levelIcons[level] || 'fa-info-circle text-gray-500'} mr-2"></i>
+                    <span class="flex-grow">${message}</span>
+                    <span class="text-gray-400 text-xs">${timestamp}</span>
+                </div>
+            `;
+            
+            // Add to top
+            activityDiv.insertAdjacentHTML('afterbegin', activityHtml);
+            
+            // Keep only last 5 activities
+            const activities = activityDiv.querySelectorAll('div');
+            if (activities.length > 5) {
+                activities[activities.length - 1].remove();
+            }
+            
+            // Also add to pipeline logs if on that tab
+            const logElement = document.getElementById('pipeline-logs');
+            if (logElement) {
+                const logHtml = `<div class="log-${level} mb-1">[${timestamp}] ${message}</div>`;
+                logElement.insertAdjacentHTML('beforeend', logHtml);
+                logElement.scrollTop = logElement.scrollHeight;
+            }
+        }
+
+        function updateStats() {
+            document.getElementById('stats-projects').textContent = appState.projects.length;
+            document.getElementById('stats-artifacts').textContent = appState.projects.reduce((sum, p) => sum + (p.artifact_count || 0), 0);
+            document.getElementById('stats-connections').textContent = ws && ws.readyState === WebSocket.OPEN ? '1' : '0';
+        }
+
+        function viewProjectDetails(projectId) {
+            // In a full implementation, this would show a detailed project view
+            alert(`Viewing project ${projectId}. This feature is under development.`);
+        }
+    </script>
+</body>
+</html>
