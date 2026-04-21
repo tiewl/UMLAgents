@@ -13,7 +13,7 @@ Things like:
 - Device nicknames
 - Anything environment-specific
 
-## Examples
+## Examples (Fictional - Replace with Your Details)
 
 ```markdown
 ### Cameras
@@ -23,17 +23,25 @@ Things like:
 
 ### SSH
 
-- home-server → 192.168.1.100, user: admin
+- example-server → 192.0.2.100, user: admin
+- staging-server → 203.0.113.50, user: deploy
 
 ### TTS
 
 - Preferred voice: "Nova" (warm, slightly British)
-- Default speaker: Kitchen HomePod
+- Default speaker: "Kitchen Speaker"
 ```
 
 ## Why Separate?
 
 Skills are shared. Your setup is yours. Keeping them apart means you can update skills without losing your notes, and share skills without leaking your infrastructure.
+
+## Privacy Warning
+
+This file may contain sensitive information about your local infrastructure. 
+- Use fictional examples in public repositories (like the examples above)
+- Store real configuration in a private location
+- Consider adding this file to `.gitignore` for personal workspaces
 
 ---
 

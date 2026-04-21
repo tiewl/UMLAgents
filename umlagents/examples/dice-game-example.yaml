@@ -1,6 +1,6 @@
 # Dice Game Example
 # Illustrates minimal YAML for UMLAgents v0.1
-# Based on Leon's dice‑game‑agents reference
+# Based on dice‑game‑agents reference implementation
 
 project:
   name: "Dice Game"
