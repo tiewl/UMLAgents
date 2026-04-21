@@ -109,6 +109,13 @@ class BAAgent(BaseAgent):
             if existing_use_cases > 0:
                 print(f"[{self.name}] Skipping BA - {existing_use_cases} use cases already exist")
                 return "skip"
+            else:
+                # No use cases exist but skip_existing is True
+                # This is an error condition - requirements should already be loaded
+                raise ValueError(
+                    f"No use cases found for project {self.project_id}. "
+                    "Requirements must be loaded via YAML before running pipeline from web UI."
+                )
         
         if "yaml_path" in context:
             return "yaml"

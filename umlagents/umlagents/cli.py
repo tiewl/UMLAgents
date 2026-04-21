@@ -696,10 +696,12 @@ def command_orchestrate(args):
         # Prepare context
         context = {
             'project_id': project.id,
-            'start_phase': Phase[args.start_phase.upper()] if args.start_phase else None,
-            'agents_to_run': args.agents.split(',') if args.agents else None,
             'halt_on_error': not args.continue_on_error
         }
+        if args.start_phase:
+            context['start_phase'] = Phase[args.start_phase.upper()]
+        if args.agents:
+            context['agents_to_run'] = args.agents.split(',')
         
         # Run pipeline
         result = agent.run(context)

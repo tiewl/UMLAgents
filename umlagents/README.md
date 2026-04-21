@@ -57,8 +57,20 @@ git clone <repository>
 cd umlagents
 pip install -e .
 
+# Install with web UI support (optional)
+pip install -e .[web]
+
 # Or install directly (when published)
 pip install umlagents
+```
+
+**Using Conda?** Create a new environment first:
+```bash
+conda create -n umlagents python=3.10
+conda activate umlagents
+pip install -e .
+# For web UI support:
+pip install -e .[web]
 ```
 
 ### Configuration
@@ -84,12 +96,14 @@ umlagents list
 
 # Run full pipeline on project ID 1
 umlagents orchestrate 1
+# If you encounter "'NoneType' object is not iterable", use:
+# umlagents orchestrate 1 --agents BAAgent
 
 # Generate UML diagrams only
 umlagents architect 1 --diagram-types "domain,sequence"
 
 # Start WebSocket UI (monitoring)
-uvicorn umlagents.web.app:app --host 0.0.0.0 --port 8080
+uvicorn web.app:app --host 0.0.0.0 --port 8080
 ```
 
 ## Examples
@@ -142,11 +156,40 @@ python test_cli_validation.py
 
 ## WebSocket UI
 
-UMLAgents includes a real‑time monitoring interface:
+UMLAgents includes a real‑time monitoring interface. **Note:** The web UI requires optional dependencies.
+
+### Installation
+
+Option A: Install with web extras:
+```bash
+# Install UMLAgents with web dependencies
+pip install -e .[web]
+```
+
+Option B: Install dependencies separately:
+```bash
+# Install UMLAgents first
+pip install -e .
+
+# Then install web dependencies
+pip install "uvicorn[standard]" fastapi websockets python-multipart
+```
+
+### Starting the Server
 
 ```bash
 # Start the WebSocket server
-uvicorn umlagents.web.app:app --host 0.0.0.0 --port 8080 --reload
+uvicorn web.app:app --host 0.0.0.0 --port 8080 --reload
+```
+
+If using Conda, ensure you're in the correct environment:
+```bash
+# Activate your conda environment first
+conda activate umlagents
+
+# Then install dependencies and run
+pip install "uvicorn[standard]" fastapi websockets python-multipart
+uvicorn web.app:app --host 0.0.0.0 --port 8080 --reload
 ```
 
 Access the UI at `http://localhost:8080` for:
@@ -154,6 +197,66 @@ Access the UI at `http://localhost:8080` for:
 - Interactive requirement elicitation
 - Artifact preview and download
 - Audit trail exploration
+
+## Troubleshooting
+
+### "uvicorn is not recognized" (Windows/Conda)
+If you get `The term 'uvicorn' is not recognized`, you need to:
+1. Activate your Conda environment: `conda activate umlagents`
+2. Install UMLAgents with web extras: `pip install -e .[web]`
+   Or install separately:
+   ```bash
+   pip install -e .
+   pip install "uvicorn[standard]" fastapi websockets python-multipart
+   ```
+
+### Orchestrator Error: "'NoneType' object is not iterable"
+If `umlagents orchestrate 1` fails with this error, you may have an older version of the CLI. The fix is in `umlagents/cli.py` around line 690-710.
+
+**Workaround:** Use the `--agents` flag to specify which agents to run:
+```bash
+umlagents orchestrate 1 --agents BAAgent
+```
+
+**Permanent fix:** Update your `cli.py` file. Look for:
+```python
+# Prepare context
+context = {
+    'project_id': project.id,
+    'start_phase': Phase[args.start_phase.upper()] if args.start_phase else None,
+    'agents_to_run': args.agents.split(',') if args.agents else None,
+    'halt_on_error': not args.continue_on_error
+}
+```
+
+Replace with:
+```python
+# Prepare context
+context = {
+    'project_id': project.id,
+    'halt_on_error': not args.continue_on_error
+}
+if args.start_phase:
+    context['start_phase'] = Phase[args.start_phase.upper()]
+if args.agents:
+    context['agents_to_run'] = args.agents.split(',')
+```
+
+### Import Errors
+If Python can't find `umlagents` modules, make sure you installed in development mode:
+```bash
+pip install -e .
+```
+
+### Web UI Import Errors
+If you get `ModuleNotFoundError: No module named 'umlagents.web'`, note that the web module is at the project root, not inside the `umlagents` package. Use `web.app` instead of `umlagents.web.app`:
+```bash
+# Correct import for testing
+python -c "import uvicorn; import fastapi; import web.app; print('✅ All imports work!')"
+
+# Correct uvicorn command
+uvicorn web.app:app --host 0.0.0.0 --port 8080 --reload
+```
 
 ## License
 

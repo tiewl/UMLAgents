@@ -129,6 +129,10 @@
                                     <button id="btn-run-demo" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
                                         <i class="fas fa-play mr-1"></i> Run Demo
                                     </button>
+                                    <button id="btn-reset-all" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 mt-2">
+                                        <i class="fas fa-trash-alt mr-1"></i> Reset Everything
+                                    </button>
+                                    <p class="text-xs text-gray-500 mt-2">Reset deletes all projects and generated files.</p>
                                 </div>
                                 <div class="bg-green-50 p-4 rounded-lg">
                                     <h3 class="font-bold text-lg mb-2 text-green-700"><i class="fas fa-check-circle mr-2"></i> Recent Activity</h3>
@@ -203,7 +207,7 @@
                     <div id="pipeline" class="tab-content">
                         <div class="bg-white rounded-lg shadow p-6">
                             <h2 class="text-2xl font-bold mb-6 text-gray-800">Pipeline Control</h2>
-                            
+
                             <div class="mb-6">
                                 <h3 class="font-bold text-lg mb-3 text-gray-700">Select Project</h3>
                                 <select id="pipeline-project" class="w-full p-2 border rounded">
@@ -274,7 +278,7 @@
                     <div id="requirements" class="tab-content">
                         <div class="bg-white rounded-lg shadow p-6">
                             <h2 class="text-2xl font-bold mb-6 text-gray-800">Interactive Requirements</h2>
-                            
+
                             <div class="mb-6">
                                 <h3 class="font-bold text-lg mb-3 text-gray-700">Create New Requirements</h3>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -314,12 +318,23 @@
 
                             <div class="mt-6">
                                 <h3 class="font-bold text-lg mb-3 text-gray-700">Load YAML Requirements</h3>
-                                <div class="flex items-center">
-                                    <input type="text" id="yaml-path" class="flex-grow p-2 border rounded mr-2" placeholder="Path to YAML file (e.g., examples/dice-game-example.yaml)">
-                                    <button id="btn-load-yaml" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                                        <i class="fas fa-upload mr-1"></i> Load YAML
-                                    </button>
+                                <div class="mb-3">
+                                    <label class="block text-sm font-medium text-gray-700 mb-1">Upload YAML File</label>
+                                    <div class="flex items-center">
+                                        <input type="file" id="yaml-file" class="flex-grow p-2 border rounded mr-2" accept=".yaml,.yml">
+                                        <button id="btn-upload-yaml" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                                            <i class="fas fa-upload mr-1"></i> Upload
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">Or use existing file:</p>
+                                    <div class="flex items-center mt-2">
+                                        <input type="text" id="yaml-path" class="flex-grow p-2 border rounded mr-2" placeholder="Path to YAML file (e.g., examples/dice-game-example.yaml)">
+                                        <button id="btn-load-yaml" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                            <i class="fas fa-file-import mr-1"></i> Load
+                                        </button>
+                                    </div>
                                 </div>
+                                <div id="upload-status" class="hidden mt-2 p-2 rounded text-sm"></div>
                             </div>
                         </div>
                     </div>
@@ -328,7 +343,7 @@
                     <div id="artifacts" class="tab-content">
                         <div class="bg-white rounded-lg shadow p-6">
                             <h2 class="text-2xl font-bold mb-6 text-gray-800">Generated Artifacts</h2>
-                            
+
                             <div class="mb-6">
                                 <div class="flex justify-between items-center">
                                     <h3 class="font-bold text-lg text-gray-700">Select Project</h3>
@@ -371,7 +386,7 @@
                     <div id="logs" class="tab-content">
                         <div class="bg-white rounded-lg shadow p-6">
                             <h2 class="text-2xl font-bold mb-6 text-gray-800">Audit Logs</h2>
-                            
+
                             <div class="mb-6">
                                 <div class="flex justify-between items-center">
                                     <h3 class="font-bold text-lg text-gray-700">Select Project</h3>
@@ -418,7 +433,7 @@
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <div class="text-center text-gray-500 text-sm">
                     <p>UMLAgents &copy; 2026 - From conversation to compliant code</p>
-                    <p class="mt-1">Real‑time monitoring via WebSocket | SQLite audit trail | Larman OOA/OOD methodology</p>
+                    <p class="mt-1">Real-time monitoring via WebSocket | SQLite audit trail | Larman OOA/OOD methodology</p>
                 </div>
             </div>
         </footer>
@@ -430,7 +445,7 @@
         let ws = null;
         let reconnectAttempts = 0;
         const maxReconnectAttempts = 5;
-        
+
         // Application state
         let appState = {
             projects: [],
@@ -444,25 +459,25 @@
         const connectionStatus = document.getElementById('connection-status');
         const currentTime = document.getElementById('current-time');
         const recentActivity = document.getElementById('recent-activity');
-        
+
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
             // Setup tab navigation
             setupTabs();
-            
+
             // Setup buttons
             setupButtons();
-            
+
             // Connect to WebSocket
             connectWebSocket();
-            
+
             // Update time
             updateCurrentTime();
             setInterval(updateCurrentTime, 1000);
-            
+
             // Load initial data
             loadProjects();
-            
+
             // Setup event listeners
             document.getElementById('select-all-agents').addEventListener('change', function(e) {
                 const checkboxes = document.querySelectorAll('input[name="agents"]');
@@ -472,14 +487,14 @@
                     }
                 });
             });
-            
+
             // Artifact project change
             document.getElementById('artifacts-project').addEventListener('change', function() {
                 if (this.value) {
                     loadArtifacts(this.value);
                 }
             });
-            
+
             // Logs project change
             document.getElementById('logs-project').addEventListener('change', function() {
                 if (this.value) {
@@ -495,13 +510,13 @@
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
                     const tabId = this.getAttribute('data-tab');
-                    
+
                     // Update active tab link
                     tabLinks.forEach(l => l.classList.remove('bg-indigo-50', 'text-indigo-700', 'font-medium'));
                     tabLinks.forEach(l => l.classList.add('hover:bg-gray-100', 'text-gray-700'));
                     this.classList.remove('hover:bg-gray-100', 'text-gray-700');
                     this.classList.add('bg-indigo-50', 'text-indigo-700', 'font-medium');
-                    
+
                     // Show selected tab content
                     document.querySelectorAll('.tab-content').forEach(content => {
                         content.classList.remove('active');
@@ -518,26 +533,26 @@
                 document.querySelector('.tab-link[data-tab="projects"]').click();
                 document.getElementById('btn-create-project').click();
             });
-            
+
             // Run Demo
             document.getElementById('btn-run-demo').addEventListener('click', function() {
                 startPipeline(1, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'DeployerAgent']);
             });
-            
+
             // Create Project
             document.getElementById('btn-create-project').addEventListener('click', async function() {
                 const name = prompt('Enter project name:');
                 if (!name) return;
-                
+
                 const domain = prompt('Enter project domain (e.g., Finance, Healthcare):') || 'General';
-                
+
                 try {
                     const response = await fetch('/api/projects', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ name, domain, description: '' })
                     });
-                    
+
                     if (response.ok) {
                         const project = await response.json();
                         addActivity(`Project "${name}" created`, 'success');
@@ -549,7 +564,7 @@
                     addActivity('Error creating project: ' + error.message, 'error');
                 }
             });
-            
+
             // Start Pipeline
             document.getElementById('btn-start-pipeline').addEventListener('click', function() {
                 const projectId = document.getElementById('pipeline-project').value;
@@ -557,32 +572,32 @@
                     alert('Please select a project first');
                     return;
                 }
-                
+
                 const agents = Array.from(document.querySelectorAll('input[name="agents"]:checked'))
                     .filter(cb => cb.value !== 'all')
                     .map(cb => cb.value);
-                
+
                 if (agents.length === 0) {
                     alert('Please select at least one agent');
                     return;
                 }
-                
+
                 startPipeline(projectId, agents);
             });
-            
+
             // Start Interactive Session
             document.getElementById('btn-start-interactive').addEventListener('click', function() {
                 const projectName = document.getElementById('req-project-name').value;
                 const domain = document.getElementById('req-domain').value;
-                
+
                 if (!projectName) {
                     alert('Please enter a project name');
                     return;
                 }
-                
+
                 startInteractiveBA(projectName, domain);
             });
-            
+
             // Load YAML
             document.getElementById('btn-load-yaml').addEventListener('click', function() {
                 const yamlPath = document.getElementById('yaml-path').value;
@@ -594,6 +609,39 @@
                 loadYAML(yamlPath);
             });
             
+            // Upload YAML
+            document.getElementById('btn-upload-yaml').addEventListener('click', function() {
+                const fileInput = document.getElementById('yaml-file');
+                if (fileInput.files.length === 0) {
+                    alert('Please select a YAML file to upload');
+                    return;
+                }
+                uploadYAML(fileInput.files[0]);
+            });
+            
+            // Drag-and-drop support
+            const fileDropArea = document.getElementById('yaml-file');
+            fileDropArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.add('border-blue-500');
+            });
+            fileDropArea.addEventListener('dragleave', () => {
+                fileDropArea.classList.remove('border-blue-500');
+            });
+            fileDropArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                fileDropArea.classList.remove('border-blue-500');
+                if (e.dataTransfer.files.length) {
+                    // Assign dropped files to the file input
+                    fileDropArea.files = e.dataTransfer.files;
+                    // Auto-upload after drop
+                    uploadYAML(e.dataTransfer.files[0]);
+                }
+            });
+            
+            // Reset database
+            document.getElementById('btn-reset-all').addEventListener('click', resetDatabase);
+
             // Refresh buttons
             document.getElementById('btn-refresh-artifacts').addEventListener('click', function() {
                 const projectId = document.getElementById('artifacts-project').value;
@@ -601,14 +649,14 @@
                     loadArtifacts(projectId);
                 }
             });
-            
+
             document.getElementById('btn-refresh-logs').addEventListener('click', function() {
                 const projectId = document.getElementById('logs-project').value;
                 if (projectId) {
                     loadAuditLogs(projectId);
                 }
             });
-            
+
             // Clear logs
             document.getElementById('btn-clear-logs').addEventListener('click', function() {
                 document.getElementById('pipeline-logs').innerHTML = '<div class="text-gray-400">Pipeline logs cleared</div>';
@@ -619,9 +667,9 @@
         function connectWebSocket() {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws`;
-            
+
             ws = new WebSocket(wsUrl);
-            
+
             ws.onopen = function() {
                 console.log('WebSocket connected');
                 connectionStatus.className = 'flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800 websocket-connected';
@@ -629,12 +677,12 @@
                 reconnectAttempts = 0;
                 addActivity('WebSocket connected', 'success');
             };
-            
+
             ws.onclose = function() {
                 console.log('WebSocket disconnected');
                 connectionStatus.className = 'flex items-center px-3 py-1 rounded-full bg-red-100 text-red-800 websocket-disconnected';
                 connectionStatus.innerHTML = '<i class="fas fa-plug mr-2"></i><span>Disconnected</span>';
-                
+
                 // Try to reconnect
                 if (reconnectAttempts < maxReconnectAttempts) {
                     reconnectAttempts++;
@@ -644,12 +692,12 @@
                     }, 3000);
                 }
             };
-            
+
             ws.onerror = function(error) {
                 console.error('WebSocket error:', error);
                 addActivity('WebSocket error occurred', 'error');
             };
-            
+
             ws.onmessage = function(event) {
                 try {
                     const message = JSON.parse(event.data);
@@ -662,62 +710,89 @@
 
         function handleWebSocketMessage(message) {
             console.log('WebSocket message:', message);
-            
+
             switch (message.type) {
                 case 'connected':
                     addActivity(message.message, 'info');
                     break;
-                    
+
                 case 'pipeline_started':
                     addActivity(`Pipeline started for project ${message.project_id}`, 'info');
                     updatePipelineStatus('Starting...', 10);
                     break;
-                    
+
                 case 'pipeline_progress':
                     addActivity(`Pipeline progress: ${message.message}`, 'info');
                     updatePipelineStatus(message.message, 30);
                     break;
-                    
+
                 case 'pipeline_completed':
                     addActivity(`Pipeline completed in ${message.result.total_time_ms}ms`, 'success');
                     updatePipelineStatus('Completed', 100);
                     updateAgentStatuses(message.result.agents_executed);
                     break;
-                    
+
                 case 'pipeline_error':
                     addActivity(`Pipeline error: ${message.message}`, 'error');
                     updatePipelineStatus('Failed', 0);
                     break;
-                    
+
                 case 'project_created':
                     addActivity(`Project created: ${message.project.name}`, 'success');
                     loadProjects();
                     break;
-                    
+
                 case 'ba_interactive_started':
                     startInteractiveSessionUI(message.project_name, message.domain);
                     break;
-                    
+
                 case 'ba_question':
                     showInteractiveQuestion(message.question, message.question_number, message.total_questions);
                     break;
-                    
+
                 case 'ba_completed':
                     endInteractiveSessionUI(message.project_name);
                     break;
-                    
+
                 case 'project_status':
                     updateProjectUI(message);
                     break;
-                    
+
                 case 'artifact_content':
                     showArtifactContent(message);
                     break;
-                    
+
+                case 'yaml_load_progress':
+                    addActivity(`YAML load: ${message.message}`, 'info');
+                    break;
+
+                case 'yaml_load_completed':
+                    addActivity(`YAML loaded: ${message.message}`, 'success');
+                    // Refresh projects list
+                    loadProjects();
+                    break;
+
+                case 'yaml_load_error':
+                    addActivity(`YAML load error: ${message.message}`, 'error');
+                    break;
+
+                case 'reset_completed':
+                    addActivity(`Reset completed: ${message.message}`, 'success');
+                    // Clear projects list
+                    appState.projects = [];
+                    updateProjectsUI();
+                    updateStats();
+                    // Clear pipeline project dropdown
+                    const pipelineSelect = document.getElementById('pipeline-project');
+                    if (pipelineSelect) {
+                        pipelineSelect.innerHTML = '<option value="">No projects available</option>';
+                    }
+                    break;
+
                 case 'error':
                     addActivity(`Error: ${message.message}`, 'error');
                     break;
-                
+
                 case 'event':
                     // Handle UMLAgents events
                     const eventType = message.event_type;
@@ -764,7 +839,7 @@
             const pipelineSelect = document.getElementById('pipeline-project');
             const artifactsSelect = document.getElementById('artifacts-project');
             const logsSelect = document.getElementById('logs-project');
-            
+
             if (appState.projects.length === 0) {
                 projectsList.innerHTML = `
                     <div class="text-center py-8 text-gray-500">
@@ -775,22 +850,22 @@
                         </button>
                     </div>
                 `;
-                
+
                 // Add event listener to the new button
                 setTimeout(() => {
                     const btn = document.getElementById('btn-create-first-project');
                     if (btn) btn.addEventListener('click', () => document.getElementById('btn-create-project').click());
                 }, 100);
-                
+
                 // Update selects
                 const noProjectsOption = '<option value="">No projects available</option>';
                 pipelineSelect.innerHTML = noProjectsOption;
                 artifactsSelect.innerHTML = noProjectsOption;
                 logsSelect.innerHTML = noProjectsOption;
-                
+
                 return;
             }
-            
+
             // Update projects list
             projectsList.innerHTML = appState.projects.map(project => `
                 <div class="border rounded-lg p-4 hover:bg-gray-50">
@@ -811,13 +886,13 @@
                     </div>
                 </div>
             `).join('');
-            
+
             // Update select dropdowns
             const options = appState.projects.map(p => `<option value="${p.id}">${p.name} (${p.current_phase || 'INCEPTION'})</option>`).join('');
             pipelineSelect.innerHTML = `<option value="">Select a project</option>${options}`;
             artifactsSelect.innerHTML = `<option value="">Select a project</option>${options}`;
             logsSelect.innerHTML = `<option value="">Select a project</option>${options}`;
-            
+
             // Add event listeners to project buttons
             document.querySelectorAll('.view-project-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
@@ -825,7 +900,7 @@
                     viewProjectDetails(projectId);
                 });
             });
-            
+
             document.querySelectorAll('.run-project-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const projectId = this.getAttribute('data-id');
@@ -864,7 +939,7 @@
                 if (!byType[type]) byType[type] = [];
                 byType[type].push(artifact);
             });
-            
+
             // Update artifact types list
             const typesHtml = Object.entries(byType).map(([type, items]) => `
                 <div class="p-2 bg-white rounded border">
@@ -872,9 +947,9 @@
                     <div class="text-sm text-gray-600">${items.length} item${items.length !== 1 ? 's' : ''}</div>
                 </div>
             `).join('');
-            
+
             document.getElementById('artifact-types').innerHTML = typesHtml || '<div class="text-gray-500">No artifacts</div>';
-            
+
             // Update artifact list
             const listHtml = artifacts.map(artifact => `
                 <div class="p-3 bg-white rounded border hover:bg-gray-50 cursor-pointer artifact-item" data-id="${artifact.id}">
@@ -889,9 +964,9 @@
                     </div>
                 </div>
             `).join('');
-            
+
             document.getElementById('artifact-list').innerHTML = listHtml || '<div class="text-gray-500">No artifacts</div>';
-            
+
             // Add click listeners
             document.querySelectorAll('.artifact-item').forEach(item => {
                 item.addEventListener('click', function() {
@@ -915,11 +990,11 @@
 
         function showArtifactContent(artifact) {
             document.getElementById('artifact-preview').classList.remove('hidden');
-            
+
             const contentElement = document.getElementById('artifact-content');
             contentElement.textContent = artifact.content || '(No content)';
             contentElement.className = artifact.artifact_type === 'source_code' ? 'python' : '';
-            
+
             // Re-highlight syntax
             if (hljs) {
                 hljs.highlightElement(contentElement);
@@ -939,12 +1014,12 @@
 
         function updateProjectUI(projectData) {
             const logsContainer = document.getElementById('audit-logs');
-            
+
             if (!projectData.audit_logs || projectData.audit_logs.length === 0) {
                 logsContainer.innerHTML = '<div class="text-center py-8 text-gray-500">No audit logs found</div>';
                 return;
             }
-            
+
             const logsHtml = projectData.audit_logs.map(log => `
                 <div class="p-3 bg-gray-50 rounded border">
                     <div class="flex justify-between items-start">
@@ -960,7 +1035,7 @@
                     </div>
                 </div>
             `).join('');
-            
+
             logsContainer.innerHTML = logsHtml;
         }
 
@@ -971,14 +1046,14 @@
                 project_id: parseInt(projectId),
                 agents: agents
             });
-            
+
             // Switch to pipeline tab
             document.querySelector('.tab-link[data-tab="pipeline"]').click();
-            
+
             // Update UI
             document.getElementById('pipeline-project').value = projectId;
             updatePipelineStatus('Starting pipeline...', 0);
-            
+
             // Enable stop button
             document.getElementById('btn-stop-pipeline').disabled = false;
         }
@@ -995,7 +1070,7 @@
                 el.textContent = 'Ready';
                 el.className = 'text-xs mt-1';
             });
-            
+
             // Update executed agents
             if (agentsExecuted) {
                 agentsExecuted.forEach(agent => {
@@ -1016,7 +1091,7 @@
                 project_name: projectName,
                 domain: domain
             });
-            
+
             document.getElementById('interactive-session').classList.remove('hidden');
         }
 
@@ -1030,7 +1105,7 @@
             document.getElementById('question-number').textContent = current;
             document.getElementById('total-questions').textContent = total;
             document.getElementById('answer-input').value = '';
-            
+
             addActivity(`Question ${current}/${total}: ${question}`, 'info');
         }
 
@@ -1049,6 +1124,77 @@
             addActivity(`Loading YAML: ${yamlPath}`, 'info');
         }
 
+        async function uploadYAML(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const uploadStatus = document.getElementById('upload-status');
+            uploadStatus.className = 'mt-2 p-2 rounded text-sm bg-blue-100 text-blue-800';
+            uploadStatus.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Uploading...';
+            uploadStatus.classList.remove('hidden');
+
+            try {
+                const response = await fetch('/api/upload-yaml', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    uploadStatus.className = 'mt-2 p-2 rounded text-sm bg-green-100 text-green-800';
+                    uploadStatus.innerHTML = `<i class="fas fa-check mr-1"></i> Uploaded: ${result.filename}`;
+
+                    // Auto-populate the path input
+                    document.getElementById('yaml-path').value = result.path;
+
+                    // Automatically load the YAML after 1 second
+                    setTimeout(() => {
+                        loadYAML(result.path);
+                    }, 1000);
+                } else {
+                    uploadStatus.className = 'mt-2 p-2 rounded text-sm bg-red-100 text-red-800';
+                    uploadStatus.innerHTML = `<i class="fas fa-times mr-1"></i> Upload failed: ${result.message || 'Unknown error'}`;
+                }
+            } catch (error) {
+                uploadStatus.className = 'mt-2 p-2 rounded text-sm bg-red-100 text-red-800';
+                uploadStatus.innerHTML = `<i class="fas fa-times mr-1"></i> Upload error: ${error.message}`;
+            }
+        }
+
+        async function resetDatabase() {
+            if (!confirm('⚠️  This will delete ALL projects, artifacts, and generated files.\n\nThis action cannot be undone.\n\nAre you sure you want to reset everything?')) {
+                return;
+            }
+
+            addActivity('Resetting database and artifacts...', 'warning');
+
+            try {
+                const response = await fetch('/api/reset', {
+                    method: 'POST'
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    addActivity(result.message, 'success');
+                    // Clear projects list
+                    appState.projects = [];
+                    updateProjectsUI();
+                    updateStats();
+                    // Clear pipeline project dropdown
+                    const pipelineSelect = document.getElementById('pipeline-project');
+                    if (pipelineSelect) {
+                        pipelineSelect.innerHTML = '<option value="">No projects available</option>';
+                    }
+                } else {
+                    addActivity(`Reset failed: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                addActivity(`Reset error: ${error.message}`, 'error');
+            }
+        }
+
         // Utility functions
         function updateCurrentTime() {
             const now = new Date();
@@ -1058,14 +1204,14 @@
         function addActivity(message, level = 'info') {
             const activityDiv = document.getElementById('recent-activity');
             const timestamp = new Date().toLocaleTimeString();
-            
+
             const levelIcons = {
                 'success': 'fa-check-circle text-green-500',
                 'info': 'fa-info-circle text-blue-500',
                 'warning': 'fa-exclamation-circle text-yellow-500',
                 'error': 'fa-times-circle text-red-500'
             };
-            
+
             const activityHtml = `
                 <div class="flex items-center text-sm">
                     <i class="fas ${levelIcons[level] || 'fa-info-circle text-gray-500'} mr-2"></i>
@@ -1073,16 +1219,16 @@
                     <span class="text-gray-400 text-xs">${timestamp}</span>
                 </div>
             `;
-            
+
             // Add to top
             activityDiv.insertAdjacentHTML('afterbegin', activityHtml);
-            
+
             // Keep only last 5 activities
             const activities = activityDiv.querySelectorAll('div');
             if (activities.length > 5) {
                 activities[activities.length - 1].remove();
             }
-            
+
             // Also add to pipeline logs if on that tab
             const logElement = document.getElementById('pipeline-logs');
             if (logElement) {

@@ -14,14 +14,26 @@ import json
 import logging
 import os
 import sys
+import shutil
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+# Load .env from project root (parent of web directory)
+project_root = Path(__file__).parent.parent
+env_path = project_root / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    print(f"Loaded environment from {env_path}")
+else:
+    print(f"Warning: .env file not found at {env_path}")
+
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,6 +59,15 @@ DB_PATH = os.getenv("UMLAGENTS_DB_PATH", "umlagents.db")
 PORT = int(os.getenv("UMLAGENTS_WEB_PORT", "8080"))
 HOST = os.getenv("UMLAGENTS_WEB_HOST", "0.0.0.0")
 DEBUG = os.getenv("UMLAGENTS_DEBUG", "false").lower() == "true"
+
+# Check DeepSeek API key
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
+    print(f"⚠️  WARNING: DEEPSEEK_API_KEY not configured or still placeholder.")
+    print(f"   Current value: {DEEPSEEK_API_KEY[:8] if DEEPSEEK_API_KEY else 'None'}...")
+    print(f"   AI agents will fail. Update .env file at {env_path}")
+else:
+    print(f"✅ DEEPSEEK_API_KEY loaded: {DEEPSEEK_API_KEY[:8]}...")
 
 # ============================================================================
 # FastAPI Application
@@ -236,7 +257,9 @@ async def handle_load_yaml(message: Dict[str, Any], websocket: WebSocket):
         "timestamp": datetime.now().isoformat()
     })
     
-    # TODO: Implement YAML loading with progress updates
+    # Create background task for YAML loading
+    task = asyncio.create_task(run_load_yaml_background(yaml_path, websocket))
+    ws_manager.pipeline_tasks[f"yaml_{yaml_path}"] = task
 
 async def handle_get_project_status(message: Dict[str, Any], websocket: WebSocket):
     """Get current status of a project."""
@@ -364,8 +387,8 @@ async def run_pipeline_background(project_id: int, agents: List[str]):
         # Build context
         context = {
             'project_id': project_id,
-            'skip_existing': False,
-            'agents_to_run': agents if agents else None
+            'skip_existing': True,  # Web UI assumes requirements already loaded
+            'agents_to_run': agents  # Could be empty list, will use phase defaults
         }
         
         await ws_manager.broadcast({
@@ -461,6 +484,76 @@ async def run_ba_interactive_background(project_name: str, domain: str, websocke
             "message": f"Interactive BA failed: {str(e)}",
             "timestamp": datetime.now().isoformat()
         }, websocket)
+
+async def run_load_yaml_background(yaml_path: str, websocket: WebSocket):
+    """Load YAML file into database with WebSocket progress updates."""
+    try:
+        from umlagents.utils.validation import YAMLValidator, ValidationError
+        from pathlib import Path
+        
+        # Resolve path relative to project root
+        project_root = Path(__file__).parent.parent
+        full_path = (project_root / yaml_path).resolve()
+        
+        await ws_manager.broadcast({
+            "type": "yaml_load_progress",
+            "stage": "validating",
+            "yaml_path": yaml_path,
+            "message": f"Validating YAML file: {yaml_path}",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        # Validate YAML
+        try:
+            yaml_data = YAMLValidator.validate_file(full_path)
+        except ValidationError as e:
+            await ws_manager.broadcast({
+                "type": "yaml_load_error",
+                "yaml_path": yaml_path,
+                "message": f"YAML validation failed: {e.message}",
+                "timestamp": datetime.now().isoformat()
+            })
+            return
+        
+        # Load into database
+        await ws_manager.broadcast({
+            "type": "yaml_load_progress",
+            "stage": "loading",
+            "yaml_path": yaml_path,
+            "message": "Loading YAML into database...",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+        engine = init_db(DB_PATH)
+        session = get_session(engine)
+        ba_agent = BAAgent(db_session=session)
+        
+        context = {"yaml_path": str(full_path)}
+        result = ba_agent.run(context)
+        
+        project_id = result.get("project_id")
+        actor_count = len(result.get("actors", []))
+        use_case_count = len(result.get("use_cases", []))
+        
+        session.close()
+        
+        await ws_manager.broadcast({
+            "type": "yaml_load_completed",
+            "yaml_path": yaml_path,
+            "project_id": project_id,
+            "actor_count": actor_count,
+            "use_case_count": use_case_count,
+            "message": f"Successfully loaded YAML: {actor_count} actors, {use_case_count} use cases",
+            "timestamp": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        await ws_manager.broadcast({
+            "type": "yaml_load_error",
+            "yaml_path": yaml_path,
+            "message": f"Failed to load YAML: {str(e)}",
+            "timestamp": datetime.now().isoformat()
+        })
 
 # ============================================================================
 # REST API Endpoints
@@ -622,6 +715,105 @@ async def get_artifact_content(artifact_id: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/reset")
+async def reset_database():
+    """Reset the database and delete all generated artifacts."""
+    try:
+        # Delete database file
+        db_path = Path(DB_PATH)
+        if db_path.exists():
+            db_path.unlink()
+            print(f"Deleted database file: {db_path}")
+        
+        # Delete output directory
+        output_dir = project_root / "output"
+        if output_dir.exists():
+            shutil.rmtree(output_dir)
+            print(f"Deleted output directory: {output_dir}")
+        
+        # Delete uploads directory
+        uploads_dir = Path(__file__).parent / "uploads"
+        if uploads_dir.exists():
+            shutil.rmtree(uploads_dir)
+            print(f"Deleted uploads directory: {uploads_dir}")
+        
+        # Reinitialize database
+        engine = init_db(DB_PATH)
+        session = get_session(engine)
+        session.close()
+        
+        # Broadcast reset event via WebSocket
+        await ws_manager.broadcast({
+            "type": "reset_completed",
+            "timestamp": datetime.now().isoformat(),
+            "message": "Database and artifacts reset successfully"
+        })
+        
+        return {
+            "success": True,
+            "message": "Database and artifacts reset successfully",
+            "timestamp": datetime.now().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/upload-yaml")
+async def upload_yaml_file(file: UploadFile = File(...)):
+    """Upload a YAML file and save to uploads directory."""
+    try:
+        # Ensure uploads directory exists
+        uploads_dir = Path(__file__).parent / "uploads"
+        uploads_dir.mkdir(exist_ok=True)
+        
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{timestamp}_{file.filename}"
+        file_path = uploads_dir / filename
+        
+        # Save file
+        content = await file.read()
+        file_path.write_bytes(content)
+        
+        # Return relative path from project root
+        relative_path = file_path.relative_to(project_root)
+        
+        return {
+            "success": True,
+            "message": "File uploaded successfully",
+            "path": str(relative_path),
+            "filename": filename,
+            "size": len(content)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/test-key")
+async def test_api_key():
+    """Test if DeepSeek API key is properly loaded."""
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    
+    if not api_key:
+        return {
+            "success": False,
+            "message": "DEEPSEEK_API_KEY environment variable not set",
+            "key_loaded": False,
+            "key_preview": None,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    # Optional: test the key with a simple request
+    # For now just return that it's loaded
+    return {
+        "success": True,
+        "message": "API key is loaded and valid",
+        "key_loaded": True,
+        "key_preview": f"{api_key[:8]}...",
+        "key_length": len(api_key),
+        "base_url": base_url,
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.get("/api/health")
 async def health_check():

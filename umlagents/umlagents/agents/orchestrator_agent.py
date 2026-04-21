@@ -87,7 +87,10 @@ class OrchestratorAgent(BaseAgent):
         # Convert string phase to Phase enum
         if isinstance(start_phase, str):
             start_phase = Phase[start_phase.upper()]
-        agents_to_run = context.get('agents_to_run', self._get_agents_for_phase(start_phase))
+        # Get agents to run, defaulting to phase-based agents if None/empty or not provided
+        agents_to_run = context.get('agents_to_run')
+        if agents_to_run is None or agents_to_run == []:
+            agents_to_run = self._get_agents_for_phase(start_phase)
         skip_existing = context.get('skip_existing', True)
         
         # If agents_to_run contains strings, map to classes
@@ -110,7 +113,10 @@ class OrchestratorAgent(BaseAgent):
 
         print(f"[Orchestrator] Starting pipeline for project: {project.name}")
         print(f"[Orchestrator] Current phase: {project.current_phase.value}")
-        print(f"[Orchestrator] Agents to run: {[agent.__name__ for agent in agents_to_run]}")
+        if agents_to_run:
+            print(f"[Orchestrator] Agents to run: {[agent.__name__ for agent in agents_to_run]}")
+        else:
+            print(f"[Orchestrator] Agents to run: [] (none specified, will use phase defaults)")
 
         results = {
             'project_id': project_id,
