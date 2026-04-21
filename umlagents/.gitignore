@@ -11,3 +11,7 @@ output/
 
 # Environment
 .env
+
+# Test scripts with sensitive keys
+test_key_simple.ps1
+test_deepseek_key.py
