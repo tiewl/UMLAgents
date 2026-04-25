@@ -120,6 +120,88 @@ uvicorn web.app:app --host 0.0.0.0 --port 8080
 - **Actors**: Patient, Receptionist, Doctor, BillingSystem, EMRSystem
 - **Use Cases**: Schedule Appointment, Cancel Appointment, View Doctor Schedule, Generate Billing Invoice, Sync with EMR
 
+## Running Generated Applications
+
+After running the pipeline, generated artifacts appear in `output/project_X/`. Each project produces a runnable application with source code, tests, and deployment configs.
+
+### Dice Game (Project 1)
+
+```bash
+# Ensure the pipeline has been run
+umlagents orchestrate 1
+
+# The generated app lives at:
+ls output/project_1/code/
+#   main.py       # FastAPI web service
+#   domain.py     # Core domain classes
+#   requirements.txt
+
+# Install dependencies and run
+cd output/project_1/code
+pip install -r requirements.txt
+uvicorn main:app --port 8080
+```
+
+**Verify it's running:**
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/metrics
+curl -X POST http://localhost:8080/players -H 'Content-Type: application/json' -d '{"name":"Alice"}'
+curl -X POST http://localhost:8080/sessions -H 'Content-Type: application/json' -d '{"session_id":"game1","max_players":4}'
+```
+
+#### Known Fix (Agent Coordination Bug)
+If `uvicorn main:app` fails with `ImportError: cannot import name 'GameRound' from 'domain'`, the generated code has a class mismatch between `main.py` and `domain.py`. Add this class to `domain.py` right before `class GameSystem:`:
+
+```python
+class GameRound:
+    """Represents a single round within a game session."""
+    def __init__(self, round_number: int):
+        self.round_number = round_number
+        self.rolls: list = []
+        self.is_tie: bool = False
+    
+    def add_roll(self, roll_result) -> None:
+        self.rolls.append(roll_result)
+    
+    def determine_winner(self):
+        if not self.rolls:
+            return None
+        max_val = max(r.value for r in self.rolls)
+        winners = [r.player for r in self.rolls if r.value == max_val]
+        self.is_tie = len(winners) > 1
+        return max(winners, key=lambda p: p.name) if self.is_tie else winners[0]
+```
+
+Also fix `roll_value` → `value` in the `HighestRollStrategy.determine_winner()` method if it exists. This is a known agent coordination gap — agents generate code independently and may reference classes from sibling files imperfectly.
+
+### Healthcare Appointment System (Project 2)
+
+```bash
+# Run the full pipeline
+umlagents orchestrate 2 --agents ArchitectAgent,DesignAgent,DeveloperAgent,TesterAgent,DeployerAgent
+
+# Find generated artifacts
+ls output/project_2/code/          # Source code (may vary)
+ls output/project_2/tests/         # Test suite
+ls output/project_2/deployment/    # Docker, k8s configs
+
+# Run tests
+cd output/project_2
+python -m pytest tests/ -v
+
+# Build and run with Docker
+cd output/project_2/deployment
+docker compose up
+```
+
+### Key Endpoints
+| Project | App URL | Description |
+|---------|---------|-------------|
+| Dice Game | `http://localhost:8080` | Dice rolling game REST API |
+| HealthSync | `http://localhost:8080` | Healthcare appointment system (after Docker) |
+| Monitoring UI | `http://localhost:8081` | WebSocket pipeline monitor (`uvicorn web.app:app --port 8081`) |
+
 ## Project Structure
 
 ```
