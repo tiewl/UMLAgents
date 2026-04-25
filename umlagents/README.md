@@ -102,6 +102,13 @@ umlagents orchestrate 1
 # Generate UML diagrams only
 umlagents architect 1 --diagram-types "domain,sequence"
 
+# ==== Easiest: end-to-end ====
+# Run pipeline + install deps + start the app in one command:
+umlagents run 2 --port 8080
+
+# Just start an existing generated app (skip pipeline):
+umlagents run 1 --skip-pipeline --port 8000
+
 # Start WebSocket UI (monitoring)
 uvicorn web.app:app --host 0.0.0.0 --port 8080
 ```

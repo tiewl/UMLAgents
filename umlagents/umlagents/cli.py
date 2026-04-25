@@ -747,6 +747,72 @@ def command_integrate_dice_game(args):
         traceback.print_exc()
         return 1
 
+
+# Execute command
+
+
+def command_run(args):
+    """End-to-end: run pipeline then start the generated app."""
+    import subprocess
+    import sys
+    from pathlib import Path
+    from umlagents.db.models import init_db, get_session, Project
+
+    db_path = args.db or "umlagents.db"
+    project_id = args.project_id
+
+    # Step 1: Run pipeline (unless skipped)
+    if not args.skip_pipeline:
+        agent_list = args.agents or "ArchitectAgent,DesignAgent,DeveloperAgent,TesterAgent,DeployerAgent"
+        print(f"\U0001f680 Running pipeline for project {project_id}...")
+        pipeline_args = [
+            sys.executable, "-m", "umlagents.cli", "orchestrate",
+            str(project_id), "--agents", agent_list, "--continue-on-error"
+        ]
+        if args.db:
+            pipeline_args.extend(["--db", db_path])
+        result = subprocess.run(pipeline_args, cwd=Path(__file__).parent.parent)
+        if result.returncode != 0:
+            print(f"\u26a0\ufe0f  Pipeline had errors (code {result.returncode}), attempting to start app anyway...")
+
+    # Step 2: Determine output directory
+    output_dir = Path(__file__).parent.parent / f"output/project_{project_id}/code"
+    if not output_dir.exists():
+        alt_dir = Path(__file__).parent.parent / f"output/project_{project_id}"
+        if alt_dir.exists():
+            mains = list(alt_dir.rglob("main.py"))
+            if mains:
+                output_dir = mains[0].parent
+
+    if not output_dir.exists():
+        print(f"\u274c Output directory not found: {output_dir}")
+        print(f"   Run `umlagents orchestrate {project_id}` first, or check output/project_{project_id}/")
+        return 1
+
+    # Step 3: Install dependencies if needed
+    req_file = output_dir / "requirements.txt"
+    if req_file.exists():
+        print(f"\U0001f4e6 Installing dependencies from {req_file}...")
+        subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-q", "-r", str(req_file)],
+            cwd=str(output_dir)
+        )
+
+    # Step 4: Start the app
+    print(f"\U0001f310 Starting app at http://{args.host}:{args.port}...")
+    print(f"   (Press Ctrl+C to stop)")
+    print()
+
+    os.chdir(str(output_dir))
+    uvicorn_args = [
+        sys.executable, "-m", "uvicorn", "main:app",
+        "--host", args.host,
+        "--port", str(args.port)
+    ]
+    subprocess.run(uvicorn_args)
+    return 0
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -806,6 +872,13 @@ def main():
     parser_deployer.add_argument("--skip-existing", action="store_true", help="Skip if deployment config already exists")
 
     # integrate-dice-game command
+    parser_run = subparsers.add_parser("run", help="End‑to‑end: run pipeline then start the generated app")
+    parser_run.add_argument("project_id", type=int, help="Project ID to run")
+    parser_run.add_argument("--port", type=int, default=8080, help="Port for the generated app")
+    parser_run.add_argument("--host", default="0.0.0.0", help="Host for the generated app")
+    parser_run.add_argument("--agents", help="Comma-separated agent class names to run")
+    parser_run.add_argument("--skip-pipeline", action="store_true", help="Skip pipeline, just run existing app")
+    
     parser_integrate = subparsers.add_parser("integrate-dice-game", help="Integrate with dice‑game‑agents repository")
 
     # orchestrate command
@@ -821,7 +894,6 @@ def main():
         parser.print_help()
         return 1
     
-    # Execute command
     commands = {
         "load-yaml": command_load_yaml,
         "interactive": command_interactive,
@@ -834,7 +906,8 @@ def main():
         "tester": command_tester,
         "deployer": command_deployer,
         "integrate-dice-game": command_integrate_dice_game,
-        "orchestrate": command_orchestrate
+        "orchestrate": command_orchestrate,
+        "run": command_run
     }
     
     return commands[args.command](args)
