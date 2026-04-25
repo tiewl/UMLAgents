@@ -291,8 +291,8 @@
                                         <input type="text" id="req-domain" class="w-full p-2 border rounded" placeholder="e.g., Finance, Healthcare">
                                     </div>
                                 </div>
-                                <button id="btn-start-interactive" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">
-                                    <i class="fas fa-comments mr-1"></i> Start Interactive Session
+                                <button id="btn-start-interactive" class="bg-indigo-400 text-white px-6 py-2 rounded hover:bg-indigo-500 cursor-not-allowed" title="Interactive BA is CLI-only. Click for instructions.">
+                                    <i class="fas fa-terminal mr-1"></i> Interactive BA (CLI Only)
                                 </button>
                             </div>
 
@@ -754,6 +754,12 @@
                     endInteractiveSessionUI(message.project_name);
                     break;
 
+                case 'ba_error':
+                    addActivity(`Interactive BA error: ${message.message}`, 'error');
+                    // Hide interactive session UI
+                    document.getElementById('interactive-session').classList.add('hidden');
+                    break;
+
                 case 'project_status':
                     updateProjectUI(message);
                     break;
@@ -1086,13 +1092,18 @@
 
         // Interactive BA functions
         function startInteractiveBA(projectName, domain) {
-            sendWebSocketMessage({
-                type: 'ba_interactive',
-                project_name: projectName,
-                domain: domain
-            });
-
-            document.getElementById('interactive-session').classList.remove('hidden');
+            // Interactive BA is not available in web UI
+            alert(
+                'Interactive requirement elicitation is not available in the web UI.\n\n' +
+                'Please use the CLI command instead:\n' +
+                '```\n' +
+                'umlagents interactive\n' +
+                '```\n\n' +
+                'Or upload a YAML requirements file using the upload feature above.'
+            );
+            
+            // Optionally, focus on the YAML upload section
+            document.getElementById('yaml-path').focus();
         }
 
         function startInteractiveSessionUI(projectName, domain) {

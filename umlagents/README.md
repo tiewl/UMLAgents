@@ -194,9 +194,11 @@ uvicorn web.app:app --host 0.0.0.0 --port 8080 --reload
 
 Access the UI at `http://localhost:8080` for:
 - Real‑time pipeline event monitoring
-- Interactive requirement elicitation
+- YAML requirement upload and validation
 - Artifact preview and download
 - Audit trail exploration
+
+**Note:** Interactive requirement elicitation is CLI‑only (`umlagents interactive`)
 
 ## Troubleshooting
 
@@ -257,6 +259,34 @@ python -c "import uvicorn; import fastapi; import web.app; print('✅ All import
 # Correct uvicorn command
 uvicorn web.app:app --host 0.0.0.0 --port 8080 --reload
 ```
+
+### Interactive mode fails or questions loop quickly (CLI)
+If `umlagents interactive` shows questions quickly without waiting for answers, or fails with an error about stdin:
+
+**Cause:** Interactive mode requires a real terminal with standard input. It won't work when run through automation tools, wrappers, or non‑interactive shells.
+
+**Solutions:**
+1. **Run in a proper terminal:** Use Windows Command Prompt, PowerShell, Git Bash, or your system's terminal (not through OpenClaw TUI or other wrappers).
+2. **Use YAML files instead:** Create a requirements YAML file and load it:
+   ```bash
+   umlagents load-yaml examples/dice-game-example.yaml
+   ```
+3. **Use command‑line arguments:** Pre‑populate some answers:
+   ```bash
+   umlagents interactive --project-name "My Project" --domain "Finance"
+   ```
+
+### Interactive BA questions loop quickly (web UI)
+If you click "Start Interactive Session" in the web UI and questions appear quickly without waiting for answers, this is because interactive requirement elicitation is not implemented in the web UI.
+
+**Solution:** Use the CLI for interactive requirement elicitation:
+```bash
+umlagents interactive
+```
+
+Or upload a YAML requirements file via the web UI's upload feature.
+
+The web UI is designed for **monitoring pipeline execution**, not interactive requirement elicitation.
 
 ## License
 

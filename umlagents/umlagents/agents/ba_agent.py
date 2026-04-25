@@ -7,6 +7,7 @@ Supports two modes:
 2. Interactive: Ask Larman-style questions to build YAML specification
 """
 import os
+import sys
 import yaml
 import json
 from pathlib import Path
@@ -252,6 +253,31 @@ class BAAgent(BaseAgent):
         
         return context
     
+    def _get_input(self, prompt: str = "> ") -> str:
+        """
+        Get input from user with proper error handling.
+        
+        Args:
+            prompt: Input prompt
+            
+        Returns:
+            User input string
+            
+        Raises:
+            RuntimeError: If EOF is encountered (Ctrl+D/Ctrl+Z)
+        """
+        try:
+            return input(prompt).strip()
+        except EOFError:
+            raise RuntimeError(
+                "\nEOF encountered. Interactive session cancelled.\n"
+                "If running in a terminal, you may have pressed Ctrl+D (Unix) or Ctrl+Z (Windows).\n"
+                "If running through an automation tool, interactive mode is not supported.\n"
+                "Use YAML requirements file instead: umlagents load-yaml <file.yaml>"
+            )
+        except KeyboardInterrupt:
+            raise RuntimeError("\nInteractive session cancelled by user.")
+    
     def _run_interactive_mode(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Interactive questionnaire to elicit requirements.
@@ -262,6 +288,14 @@ class BAAgent(BaseAgent):
         Returns:
             Context with elicited requirements
         """
+        # Check if we have an interactive terminal
+        if not sys.stdin.isatty():
+            raise RuntimeError(
+                "Interactive mode requires a terminal with stdin.\n"
+                "Please run this command in a terminal (not through a wrapper or automation tool).\n"
+                "Alternative: Use YAML requirements file instead: umlagents load-yaml <file.yaml>"
+            )
+        
         print(f"\n{'='*60}")
         print(f"[{self.name}] Starting interactive requirement elicitation")
         print(f"[{self.name}] Following Larman's OOA/OOD methodology")
@@ -278,14 +312,14 @@ class BAAgent(BaseAgent):
             print(f"\nQ{i+1}: {question}")
             
             if qtype == "text":
-                answer = input("> ").strip()
+                answer = self._get_input("> ")  # Handles EOFError and KeyboardInterrupt
                 while not answer:
                     print("Please provide an answer.")
-                    answer = input("> ").strip()
+                    answer = self._get_input("> ")
                 self.interactive_state[key] = answer
                 
             elif qtype == "list":
-                answer = input("> ").strip()
+                answer = self._get_input("> ")
                 if answer.lower() == "none":
                     self.interactive_state[key] = []
                 else:
@@ -295,7 +329,7 @@ class BAAgent(BaseAgent):
                 print("(Enter empty line when done)")
                 lines = []
                 while True:
-                    line = input("> ").strip()
+                    line = self._get_input("> ")
                     if not line:
                         break
                     lines.append(line)

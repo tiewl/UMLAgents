@@ -429,54 +429,26 @@ async def run_pipeline_background(project_id: int, agents: List[str]):
 async def run_ba_interactive_background(project_name: str, domain: str, websocket: WebSocket):
     """Run interactive BA requirement elicitation."""
     try:
-        engine = init_db(DB_PATH)
-        session = get_session(engine)
-        
-        ba_agent = BAAgent(db_session=session)
-        
-        # Interactive mode - we'll send questions via WebSocket
-        questions = [
-            "What is the primary goal of this application?",
-            "Who are the main users/actors?",
-            "What are the key use cases or scenarios?",
-            "Are there any regulatory or compliance requirements?",
-            "What are the success criteria for this project?"
-        ]
-        
-        answers = {}
-        
-        for i, question in enumerate(questions):
-            await ws_manager.send_personal_message({
-                "type": "ba_question",
-                "question": question,
-                "question_number": i + 1,
-                "total_questions": len(questions),
-                "timestamp": datetime.now().isoformat()
-            }, websocket)
-            
-            # Wait for answer (simplified - in real app would wait for WebSocket response)
-            await asyncio.sleep(1)  # Placeholder
-            answers[question] = "Sample answer"  # Would come from WebSocket
-        
-        # Create project from answers
-        project_data = {
-            'name': project_name,
-            'domain': domain,
-            'description': f"Project created via interactive BA on {datetime.now().isoformat()}",
-            'answers': answers
-        }
-        
-        # TODO: Actually create project in database
-        
+        # Interactive BA is not implemented in web UI
+        # Use CLI command: umlagents interactive
         await ws_manager.send_personal_message({
-            "type": "ba_completed",
-            "project_name": project_name,
-            "project_data": project_data,
-            "timestamp": datetime.now().isoformat(),
-            "message": "Interactive requirement elicitation completed"
+            "type": "ba_error",
+            "message": "Interactive BA is not available in web UI.\n\n" +
+                       "Please use the CLI for interactive requirement elicitation:\n" +
+                       "```\n" +
+                       "umlagents interactive\n" +
+                       "```\n\n" +
+                       "Or upload a YAML requirements file using the upload feature above.",
+            "timestamp": datetime.now().isoformat()
         }, websocket)
         
-        session.close()
+        # Also log to activity feed
+        await ws_manager.broadcast({
+            "type": "activity",
+            "message": f"Interactive BA requested for '{project_name}' - use CLI instead",
+            "level": "warning",
+            "timestamp": datetime.now().isoformat()
+        })
         
     except Exception as e:
         await ws_manager.send_personal_message({
