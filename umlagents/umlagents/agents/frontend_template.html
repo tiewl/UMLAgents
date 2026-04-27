@@ -304,6 +304,43 @@ function renderTable(tbodyId, rows) {
   ).join('');
 }
 
+// ── FK field helpers ──────────────────────────────────────────────────────────
+
+const FK_FIELDS = {
+  doctor_id:  { endpoint: '/doctors',  label: d => `Dr. ${[d.first_name,d.last_name].filter(Boolean).join(' ')}${d.specialty?' — '+d.specialty:''}` },
+  patient_id: { endpoint: '/patients', label: p => `${[p.first_name,p.last_name].filter(Boolean).join(' ')}` },
+};
+
+function fkSelectHtml(name, id, required) {
+  const req = required ? 'required' : '';
+  return `<select class="form-select fk-select" id="${id}" name="${name}" data-fk="${name}" ${req}>
+    <option value="">Loading…</option></select>`;
+}
+
+async function populateFkSelect(el) {
+  const cfg = FK_FIELDS[el.dataset.fk];
+  if (!cfg) return;
+  const prev = el.value;
+  const { ok, data } = await apiFetch(cfg.endpoint);
+  el.innerHTML = '<option value="">— select —</option>';
+  if (ok && Array.isArray(data)) {
+    data.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = cfg.label(item);
+      el.appendChild(opt);
+    });
+  }
+  if (prev) el.value = prev;
+}
+
+async function refreshFkSelects(postedPath) {
+  const base = postedPath.replace(/\{[^}]+\}/g, '').replace(/\/+$/, '');
+  const cfg = Object.entries(FK_FIELDS).find(([, v]) => v.endpoint === base);
+  if (!cfg) return;
+  document.querySelectorAll(`[data-fk="${cfg[0]}"]`).forEach(el => populateFkSelect(el));
+}
+
 // ── Schema ────────────────────────────────────────────────────────────────────
 
 function resolveSchema(schema, components) {
@@ -335,6 +372,7 @@ function isDateField(name, format) {
 function inputHtml(name, type, format, description, enumVals, required, id) {
   const req = required ? 'required' : '';
   const ph = description || name;
+  if (FK_FIELDS[name]) return fkSelectHtml(name, id, required);
   if (enumVals) {
     const opts = enumVals.map(v => `<option value="${v}">${v}</option>`).join('');
     return `<select class="form-select" id="${id}" name="${name}" ${req}><option value="">— select —</option>${opts}</select>`;
@@ -482,6 +520,12 @@ async function spLoadSlots(widget, weekStart) {
       grid.querySelectorAll('.sp-slot-btn').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
       widget.querySelector('.sp-input').value = btn.dataset.id;
+      // Auto-fill doctor_id in the parent form if present
+      const parentForm = widget.closest('form');
+      if (parentForm) {
+        const drSel = parentForm.querySelector('[data-fk="doctor_id"]');
+        if (drSel) drSel.value = doctorSelect.value;
+      }
       const drName = doctorSelect.options[doctorSelect.selectedIndex]?.text || '';
       const sel = widget.querySelector('.sp-selected');
       sel.classList.remove('d-none');
@@ -682,6 +726,7 @@ function wireCard(method, path, op) {
       toast(ok ? 'Success!' : (data.detail || 'Request failed'), ok);
       if (ok) {
         form.reset();
+        refreshFkSelects(path);
         const spWidget = document.getElementById('sp_' + id);
         if (spWidget) {
           spWidget.querySelector('.sp-grid').innerHTML =
@@ -787,6 +832,9 @@ async function init() {
   }
 
   if (firstPanel) showPanel(firstPanel);
+
+  // Populate all FK dropdowns now that the DOM is fully built
+  document.querySelectorAll('.fk-select').forEach(el => populateFkSelect(el));
 }
 
 document.addEventListener('DOMContentLoaded', init);
