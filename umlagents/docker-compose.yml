@@ -12,30 +12,17 @@ services:
       - UMLAGENTS_DB_PATH=/data/umlagents.db
       - UMLAGENTS_WEB_HOST=0.0.0.0
       - UMLAGENTS_WEB_PORT=8080
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-your_key_here}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-your_key_here}
     volumes:
       - umlagents-data:/data
       - ./examples:/app/examples:ro
+      - ./output:/app/output
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # UMLAgents CLI (standalone)
-  umlagents-cli:
-    build:
-      context: .
-      target: production
-    environment:
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-your_key_here}
-    volumes:
-      - umlagents-data:/data
-      - ./examples:/app/examples:ro
-      - ./output:/app/output
-    command: ["umlagents", "--help"]
-    restart: "no"
 
 volumes:
   umlagents-data:

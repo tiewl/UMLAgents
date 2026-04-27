@@ -44,28 +44,26 @@ USER umlagents
 EXPOSE 8080
 
 # Default command for development (WebSocket UI)
-CMD ["uvicorn", "umlagents.web.app:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
 
 # ============================================================================
-# Production stage (minimal)
+# Production stage (minimal CLI)
 # ============================================================================
-FROM python:3.11-alpine AS production
+FROM python:3.11-slim AS production
 
 WORKDIR /app
 
-# Install runtime dependencies only
+# Copy source first so pip installs from local tree
 COPY pyproject.toml setup.py ./
-RUN pip install --no-cache-dir --no-deps umlagents
-
-# Copy only necessary files
 COPY umlagents/ ./umlagents/
 COPY schema/ ./schema/
 
+RUN pip install --no-cache-dir .
+
 # Create non-root user
-RUN adduser -D -u 1000 umlagents && chown -R umlagents:umlagents /app
+RUN useradd -m -u 1000 umlagents && chown -R umlagents:umlagents /app
 USER umlagents
 
-# Default command
 CMD ["umlagents", "--help"]
 
 # ============================================================================
@@ -75,14 +73,12 @@ FROM python:3.11-slim AS web-ui
 
 WORKDIR /app
 
-# Install dependencies
+# Copy source first so pip installs from local tree
 COPY pyproject.toml setup.py ./
-RUN pip install --no-cache-dir \
-    umlagents[web]
-
-# Copy web application files
 COPY umlagents/ ./umlagents/
 COPY web/ ./web/
+
+RUN pip install --no-cache-dir ".[web]"
 
 # Create non-root user
 RUN useradd -m -u 1000 umlagents && chown -R umlagents:umlagents /app
@@ -90,4 +86,5 @@ USER umlagents
 
 EXPOSE 8080
 
-CMD ["uvicorn", "umlagents.web.app:app", "--host", "0.0.0.0", "--port", "8080"]
+# web/app.py lives at /app/web/app.py — import as web.app from /app
+CMD ["uvicorn", "web.app:app", "--host", "0.0.0.0", "--port", "8080"]

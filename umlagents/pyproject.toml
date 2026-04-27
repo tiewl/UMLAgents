@@ -26,6 +26,8 @@ dependencies = [
     "pyyaml>=6.0",
     "python-dotenv>=1.0",
     "requests>=2.25",
+    "anthropic>=0.25",
+    "httpx>=0.25",
 ]
 
 [project.optional-dependencies]

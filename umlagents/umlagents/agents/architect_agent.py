@@ -45,6 +45,9 @@ class ArchitectAgent(BaseAgent):
             db_session=db_session,
             project_id=project_id
         )
+        # PlantUML generation doesn't need Sonnet-level reasoning
+        if not os.getenv("UMLAGENTS_ARCHITECTAGENT_MODEL"):
+            self._model = os.getenv("UMLAGENTS_DEFAULT_MODEL", "claude-haiku-4-5-20251001")
 
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
