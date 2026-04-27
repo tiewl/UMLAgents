@@ -12,7 +12,7 @@ import time
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 
-from .base import BaseAgent
+from .base import BaseAgent, InsufficientCreditsError
 from .ba_agent import BAAgent
 from .architect_agent import ArchitectAgent
 from .design_agent import DesignAgent
@@ -101,6 +101,7 @@ class OrchestratorAgent(BaseAgent):
             from .developer_agent import DeveloperAgent
             from .tester_agent import TesterAgent
             from .deployer_agent import DeployerAgent
+            from .frontend_agent import FrontendAgent
             agent_map = {
                 "BAAgent": BAAgent,
                 "ArchitectAgent": ArchitectAgent,
@@ -108,6 +109,7 @@ class OrchestratorAgent(BaseAgent):
                 "DeveloperAgent": DeveloperAgent,
                 "TesterAgent": TesterAgent,
                 "DeployerAgent": DeployerAgent,
+                "FrontendAgent": FrontendAgent,
             }
             agents_to_run = [agent_map[name] for name in agents_to_run if name in agent_map]
 
@@ -196,10 +198,19 @@ class OrchestratorAgent(BaseAgent):
                 
                 print(f"[Orchestrator] {agent_name} completed in {elapsed_ms}ms")
                 
+            except InsufficientCreditsError as e:
+                elapsed_ms = int((time.time() - agent_start) * 1000)
+                error_msg = f"Anthropic credit balance too low — top up at console.anthropic.com/settings/billing"
+                print(f"[Orchestrator] CREDIT ERROR: {error_msg}")
+                publish_agent_status(agent_name=agent_name, status="completed", project_id=project_id, duration_ms=elapsed_ms, error=error_msg)
+                results['agents_executed'].append({'agent': agent_name, 'status': 'error', 'time_ms': elapsed_ms, 'error': error_msg})
+                results['errors'].append(error_msg)
+                break  # always halt on credit errors
+
             except Exception as e:
                 elapsed_ms = int((time.time() - agent_start) * 1000)
                 error_msg = f"{agent_name} failed: {str(e)}"
-                print(f"[Orchestrator] ❌ {error_msg}")
+                print(f"[Orchestrator] FAILED: {error_msg}")
                 
                 # Publish agent completed with error event
                 publish_agent_status(
@@ -272,11 +283,12 @@ class OrchestratorAgent(BaseAgent):
         from .developer_agent import DeveloperAgent
         from .tester_agent import TesterAgent
         from .deployer_agent import DeployerAgent
-        
+        from .frontend_agent import FrontendAgent
+
         phase_agents = {
             Phase.INCEPTION: [BAAgent],
             Phase.ELABORATION: [ArchitectAgent, DesignAgent],
-            Phase.CONSTRUCTION: [DeveloperAgent, TesterAgent],
+            Phase.CONSTRUCTION: [DeveloperAgent, TesterAgent, FrontendAgent],
             Phase.TRANSITION: [DeployerAgent]
         }
         

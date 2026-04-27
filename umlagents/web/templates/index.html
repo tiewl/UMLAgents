@@ -11,6 +11,7 @@
     <!-- Highlight.js for code syntax -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script>hljs.highlightAll();</script>
     <style>
         .websocket-connected { background-color: #10b981 !important; }
@@ -20,10 +21,25 @@
         .progress-bar {
             transition: width 0.5s ease-in-out;
         }
-        .plantuml-diagram {
-            max-width: 100%;
-            height: auto;
-        }
+        .plantuml-diagram { max-width: 100%; height: auto; }
+        /* Markdown prose styles */
+        #markdown-content h1 { font-size:1.6rem; font-weight:700; margin:0 0 .75rem; border-bottom:2px solid #e5e7eb; padding-bottom:.4rem; }
+        #markdown-content h2 { font-size:1.25rem; font-weight:700; margin:1.25rem 0 .5rem; border-bottom:1px solid #f3f4f6; padding-bottom:.25rem; }
+        #markdown-content h3 { font-size:1.05rem; font-weight:600; margin:1rem 0 .4rem; }
+        #markdown-content p  { margin:.5rem 0; line-height:1.65; color:#374151; }
+        #markdown-content ul  { list-style-type: disc;    margin:.5rem 0 .5rem 1.75rem; }
+        #markdown-content ol  { list-style-type: decimal; margin:.5rem 0 .5rem 1.75rem; }
+        #markdown-content li  { margin:.25rem 0; color:#374151; }
+        #markdown-content strong { font-weight:700; }
+        #markdown-content code { background:#f3f4f6; border-radius:3px; padding:.1em .35em; font-family:monospace; font-size:.9em; color:#1f2937; }
+        #markdown-content pre  { background:#1f2937; color:#f9fafb; border-radius:6px; padding:1rem; overflow-x:auto; margin:.75rem 0; }
+        #markdown-content pre code { background:none; color:inherit; padding:0; }
+        #markdown-content table { border-collapse:collapse; width:100%; margin:.75rem 0; }
+        #markdown-content th { background:#f9fafb; font-weight:600; text-align:left; padding:.5rem .75rem; border:1px solid #e5e7eb; }
+        #markdown-content td { padding:.45rem .75rem; border:1px solid #e5e7eb; color:#374151; }
+        #markdown-content tr:nth-child(even) td { background:#f9fafb; }
+        #markdown-content blockquote { border-left:4px solid #3b82f6; margin:.75rem 0; padding:.5rem 1rem; background:#eff6ff; color:#1e40af; border-radius:0 4px 4px 0; }
+        #markdown-content a { color:#2563eb; text-decoration:underline; }
         .log-success { color: #10b981; }
         .log-info { color: #3b82f6; }
         .log-warning { color: #f59e0b; }
@@ -34,7 +50,24 @@
         .agent-developer { border-left-color: #10b981; }
         .agent-tester { border-left-color: #f59e0b; }
         .agent-deployer { border-left-color: #6366f1; }
+        .agent-frontend { border-left-color: #f97316; }
         .agent-orchestrator { border-left-color: #000000; }
+
+        /* Agent pipeline timeline */
+        @keyframes step-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.7;transform:scale(.95)} }
+        @keyframes step-spin  { to{transform:rotate(360deg)} }
+        .step-icon { width:2.5rem; height:2.5rem; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid; transition:all .3s; font-size:.85rem; }
+        .step-icon.step-pending { border-color:#d1d5db; background:#f9fafb; color:#9ca3af; }
+        .step-icon.step-running { border-color:#3b82f6; background:#eff6ff; color:#3b82f6; animation:step-pulse 1.2s ease-in-out infinite; }
+        .step-icon.step-api     { border-color:#8b5cf6; background:#f5f3ff; color:#8b5cf6; animation:step-pulse .8s ease-in-out infinite; }
+        .step-icon.step-done    { border-color:#10b981; background:#ecfdf5; color:#10b981; }
+        .step-icon.step-error   { border-color:#ef4444; background:#fef2f2; color:#ef4444; }
+        .step-icon.step-skipped { border-color:#d1d5db; background:#f3f4f6; color:#9ca3af; }
+        .step-conn { height:2px; flex:1; margin-top:1.2rem; transition:background .4s; min-width:1rem; }
+        .step-conn.conn-pending { background:#e5e7eb; }
+        .step-conn.conn-done    { background:#10b981; }
+        .step-conn.conn-running { background:linear-gradient(to right,#10b981 50%,#e5e7eb 50%); }
+        .step-conn.conn-error   { background:#ef4444; }
     </style>
 </head>
 <body class="bg-gray-50 text-gray-800">
@@ -171,6 +204,11 @@
                                     <div class="text-sm text-gray-600">Tests</div>
                                     <div class="text-xs mt-1" id="agent-status-tester">Ready</div>
                                 </div>
+                                <div class="agent-card agent-frontend border-l-4 p-3 bg-orange-50">
+                                    <div class="font-bold text-orange-700">Frontend</div>
+                                    <div class="text-sm text-gray-600">UI</div>
+                                    <div class="text-xs mt-1" id="agent-status-frontend">Ready</div>
+                                </div>
                                 <div class="agent-card agent-deployer border-l-4 p-3 bg-indigo-50">
                                     <div class="font-bold text-indigo-700">Deployer</div>
                                     <div class="text-sm text-gray-600">Deploy</div>
@@ -210,9 +248,15 @@
 
                             <div class="mb-6">
                                 <h3 class="font-bold text-lg mb-3 text-gray-700">Select Project</h3>
-                                <select id="pipeline-project" class="w-full p-2 border rounded">
-                                    <option value="">Loading projects...</option>
-                                </select>
+                                <div class="flex gap-2 items-center">
+                                    <select id="pipeline-project" class="flex-grow p-2 border rounded">
+                                        <option value="">Loading projects...</option>
+                                    </select>
+                                    <button id="btn-reset-code" class="bg-orange-500 text-white px-3 py-2 rounded hover:bg-orange-600 whitespace-nowrap text-sm" title="Delete generated code/tests/deployment only — keeps requirements and diagrams">
+                                        <i class="fas fa-redo mr-1"></i> Reset Code
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-400 mt-1">Reset Code removes generated source/tests/deployment artifacts only, preserving requirements and diagrams so the pipeline can resume from the Developer agent.</p>
                             </div>
 
                             <div class="mb-6">
@@ -234,6 +278,9 @@
                                         <input type="checkbox" class="mr-2" name="agents" value="TesterAgent" checked> Tester
                                     </label>
                                     <label class="flex items-center">
+                                        <input type="checkbox" class="mr-2" name="agents" value="FrontendAgent" checked> Frontend
+                                    </label>
+                                    <label class="flex items-center">
                                         <input type="checkbox" class="mr-2" name="agents" value="DeployerAgent" checked> Deployer
                                     </label>
                                     <label class="flex items-center">
@@ -243,9 +290,79 @@
                             </div>
 
                             <div class="mb-6">
-                                <h3 class="font-bold text-lg mb-3 text-gray-700">Pipeline Progress</h3>
-                                <div class="bg-gray-100 rounded h-4 mb-2">
-                                    <div id="pipeline-progress-bar" class="progress-bar bg-green-600 h-4 rounded" style="width: 0%"></div>
+                                <h3 class="font-bold text-lg mb-4 text-gray-700">Pipeline Progress</h3>
+
+                                <!-- Per-agent timeline -->
+                                <div class="overflow-x-auto mb-4">
+                                  <div class="flex items-start" style="min-width:480px">
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-BAAgent" class="step-icon step-pending"><i class="fas fa-file-alt"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">BA</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-BAAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-BAAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-BA-Arch"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-ArchitectAgent" class="step-icon step-pending"><i class="fas fa-drafting-compass"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Architect</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-ArchitectAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-ArchitectAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-Arch-Design"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-DesignAgent" class="step-icon step-pending"><i class="fas fa-shapes"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Design</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-DesignAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-DesignAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-Design-Dev"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-DeveloperAgent" class="step-icon step-pending"><i class="fas fa-code"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Developer</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-DeveloperAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-DeveloperAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-Dev-Test"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-TesterAgent" class="step-icon step-pending"><i class="fas fa-vial"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Tester</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-TesterAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-TesterAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-Test-Frontend"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-FrontendAgent" class="step-icon step-pending"><i class="fas fa-desktop"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Frontend</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-FrontendAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-FrontendAgent"></div>
+                                    </div>
+
+                                    <div class="step-conn conn-pending" id="line-Frontend-Deploy"></div>
+
+                                    <div class="flex flex-col items-center" style="min-width:72px">
+                                      <div id="step-icon-DeployerAgent" class="step-icon step-pending"><i class="fas fa-rocket"></i></div>
+                                      <div class="text-xs font-semibold text-gray-600 mt-1">Deployer</div>
+                                      <div class="text-xs text-gray-400 text-center" id="step-status-DeployerAgent">Pending</div>
+                                      <div class="text-xs font-mono text-center text-gray-400" id="step-dur-DeployerAgent"></div>
+                                    </div>
+
+                                  </div>
+                                </div>
+
+                                <!-- Overall progress bar -->
+                                <div class="bg-gray-100 rounded h-3 mb-2">
+                                    <div id="pipeline-progress-bar" class="progress-bar bg-green-600 h-3 rounded" style="width: 0%"></div>
                                 </div>
                                 <div class="flex justify-between text-sm text-gray-600">
                                     <span id="pipeline-status">Ready</span>
@@ -291,8 +408,8 @@
                                         <input type="text" id="req-domain" class="w-full p-2 border rounded" placeholder="e.g., Finance, Healthcare">
                                     </div>
                                 </div>
-                                <button id="btn-start-interactive" class="bg-indigo-400 text-white px-6 py-2 rounded hover:bg-indigo-500 cursor-not-allowed" title="Interactive BA is CLI-only. Click for instructions.">
-                                    <i class="fas fa-terminal mr-1"></i> Interactive BA (CLI Only)
+                                <button id="btn-start-interactive" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700">
+                                    <i class="fas fa-comments mr-1"></i> Start Interactive Session
                                 </button>
                             </div>
 
@@ -300,7 +417,8 @@
                                 <div class="mb-6 bg-blue-50 p-4 rounded">
                                     <h4 class="font-bold text-lg mb-2 text-blue-700">Interactive Session</h4>
                                     <div class="mb-3">
-                                        <div class="text-sm text-gray-600">Question <span id="question-number">1</span> of <span id="total-questions">5</span></div>
+                                        <div class="text-sm text-gray-600">Phase <span id="question-number">1</span> of <span id="total-questions">7</span></div>
+                                        <div class="text-xs text-blue-600 font-semibold mt-1" id="phase-label">Project Vision</div>
                                         <div class="text-lg font-medium mt-2" id="current-question">Loading question...</div>
                                     </div>
                                     <div class="mb-3">
@@ -356,26 +474,32 @@
                                 </select>
                             </div>
 
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                                <div class="bg-gray-50 p-4 rounded">
-                                    <h4 class="font-bold text-lg mb-2 text-gray-700">Artifact Types</h4>
-                                    <div id="artifact-types" class="space-y-2">
-                                        <!-- Will be populated by JavaScript -->
-                                    </div>
-                                </div>
-                                <div class="md:col-span-2">
-                                    <div class="bg-gray-50 p-4 rounded">
-                                        <h4 class="font-bold text-lg mb-2 text-gray-700">Artifact List</h4>
-                                        <div id="artifact-list" class="space-y-2">
-                                            <div class="text-gray-500 text-center py-4">Select a project to view artifacts</div>
-                                        </div>
-                                    </div>
+                            <div class="mb-4 flex items-center gap-3">
+                                <label class="font-semibold text-gray-700 whitespace-nowrap">Filter by type:</label>
+                                <select id="artifact-type-filter" class="flex-grow p-2 border rounded bg-white text-gray-700">
+                                    <option value="">All types</option>
+                                </select>
+                                <span id="artifact-count" class="text-sm text-gray-500 whitespace-nowrap"></span>
+                            </div>
+                            <div class="bg-gray-50 p-4 rounded mb-6">
+                                <div id="artifact-list" class="space-y-2">
+                                    <div class="text-gray-500 text-center py-4">Select a project to view artifacts</div>
                                 </div>
                             </div>
 
                             <div id="artifact-preview" class="hidden">
                                 <h3 class="font-bold text-lg mb-3 text-gray-700">Artifact Preview</h3>
-                                <div class="bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm h-96 overflow-y-auto">
+                                <!-- Diagram view (.puml) -->
+                                <div id="artifact-diagram" class="hidden border rounded p-4 bg-white overflow-auto" style="min-height:200px;max-height:600px;">
+                                    <div id="diagram-loading" class="text-gray-400 text-sm text-center py-8">Rendering diagram...</div>
+                                    <div id="diagram-svg"></div>
+                                </div>
+                                <!-- Markdown view (.md) -->
+                                <div id="artifact-markdown" class="hidden border rounded p-6 bg-white overflow-y-auto prose prose-sm max-w-none" style="max-height:600px;">
+                                    <div id="markdown-content"></div>
+                                </div>
+                                <!-- Code view (everything else) -->
+                                <div id="artifact-code" class="bg-gray-900 text-gray-100 p-4 rounded font-mono text-sm h-96 overflow-y-auto">
                                     <pre><code id="artifact-content">Select an artifact to preview its content</code></pre>
                                 </div>
                             </div>
@@ -478,6 +602,9 @@
             // Load initial data
             loadProjects();
 
+            // Setup interactive BA answer buttons
+            setupInteractiveBAButtons();
+
             // Setup event listeners
             document.getElementById('select-all-agents').addEventListener('change', function(e) {
                 const checkboxes = document.querySelectorAll('input[name="agents"]');
@@ -536,7 +663,7 @@
 
             // Run Demo
             document.getElementById('btn-run-demo').addEventListener('click', function() {
-                startPipeline(1, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'DeployerAgent']);
+                startPipeline(1, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'FrontendAgent', 'DeployerAgent']);
             });
 
             // Create Project
@@ -642,6 +769,27 @@
             // Reset database
             document.getElementById('btn-reset-all').addEventListener('click', resetDatabase);
 
+            // Reset code only
+            document.getElementById('btn-reset-code').addEventListener('click', async function() {
+                const projectId = document.getElementById('pipeline-project').value;
+                if (!projectId) { alert('Select a project first'); return; }
+                if (!confirm('This will delete all generated code, tests, and deployment files for this project.\n\nRequirements and diagrams will be kept.\n\nProceed?')) return;
+
+                try {
+                    const resp = await fetch(`/api/reset-code/${projectId}`, { method: 'POST' });
+                    const result = await resp.json();
+                    if (result.success) {
+                        addActivity(result.message, 'success');
+                        resetTimeline();
+                        updatePipelineStatus('Code reset — ready to re-run', 0);
+                    } else {
+                        addActivity(`Reset code failed: ${result.detail || result.message}`, 'error');
+                    }
+                } catch (e) {
+                    addActivity(`Reset code error: ${e.message}`, 'error');
+                }
+            });
+
             // Refresh buttons
             document.getElementById('btn-refresh-artifacts').addEventListener('click', function() {
                 const projectId = document.getElementById('artifacts-project').value;
@@ -649,6 +797,8 @@
                     loadArtifacts(projectId);
                 }
             });
+
+            document.getElementById('artifact-type-filter').addEventListener('change', applyArtifactFilter);
 
             document.getElementById('btn-refresh-logs').addEventListener('click', function() {
                 const projectId = document.getElementById('logs-project').value;
@@ -717,18 +867,25 @@
                     break;
 
                 case 'pipeline_started':
+                    _pipelineCompleted = false;
+                    resetTimeline();
                     addActivity(`Pipeline started for project ${message.project_id}`, 'info');
                     updatePipelineStatus('Starting...', 10);
                     break;
 
                 case 'pipeline_progress':
-                    addActivity(`Pipeline progress: ${message.message}`, 'info');
-                    updatePipelineStatus(message.message, 30);
+                    addActivity(`Pipeline: ${message.message}`, 'info');
+                    // Don't override agent-driven progress unless we have an explicit pct
+                    if (message.progress_pct !== undefined) {
+                        updatePipelineStatus(message.message, message.progress_pct);
+                    }
                     break;
 
                 case 'pipeline_completed':
+                    _pipelineCompleted = true;
                     addActivity(`Pipeline completed in ${message.result.total_time_ms}ms`, 'success');
                     updatePipelineStatus('Completed', 100);
+                    document.getElementById('btn-stop-pipeline').disabled = true;
                     updateAgentStatuses(message.result.agents_executed);
                     break;
 
@@ -747,7 +904,16 @@
                     break;
 
                 case 'ba_question':
-                    showInteractiveQuestion(message.question, message.question_number, message.total_questions);
+                    showInteractiveQuestion(
+                        message.question,
+                        message.phase_number,
+                        message.total_phases,
+                        message.phase_label
+                    );
+                    break;
+
+                case 'ba_synthesizing':
+                    showBASynthesizing(message.message);
                     break;
 
                 case 'ba_completed':
@@ -756,7 +922,6 @@
 
                 case 'ba_error':
                     addActivity(`Interactive BA error: ${message.message}`, 'error');
-                    // Hide interactive session UI
                     document.getElementById('interactive-session').classList.add('hidden');
                     break;
 
@@ -800,18 +965,7 @@
                     break;
 
                 case 'event':
-                    // Handle UMLAgents events
-                    const eventType = message.event_type;
-                    const eventData = message.data;
-                    let eventMessage = `${eventType}`;
-                    if (eventData.agent) {
-                        eventMessage = `${eventData.agent}: ${eventType}`;
-                    }
-                    if (eventData.activity) {
-                        eventMessage = `${eventData.agent || 'System'}: ${eventData.activity}`;
-                    }
-                    addActivity(eventMessage, 'info');
-                    console.log('Event received:', message);
+                    handleAgentEvent(message.event_type, message.data);
                     break;
             }
         }
@@ -910,7 +1064,7 @@
             document.querySelectorAll('.run-project-btn').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const projectId = this.getAttribute('data-id');
-                    startPipeline(projectId, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'DeployerAgent']);
+                    startPipeline(projectId, ['BAAgent', 'ArchitectAgent', 'DesignAgent', 'DeveloperAgent', 'TesterAgent', 'FrontendAgent', 'DeployerAgent']);
                 });
             });
         }
@@ -937,49 +1091,98 @@
             }
         }
 
-        function updateArtifactsUI(artifacts) {
-            // Group artifacts by type
-            const byType = {};
-            artifacts.forEach(artifact => {
-                const type = artifact.artifact_type || 'unknown';
-                if (!byType[type]) byType[type] = [];
-                byType[type].push(artifact);
-            });
+        // All artifacts for the current project (used by filter)
+        let _allArtifacts = [];
 
-            // Update artifact types list
-            const typesHtml = Object.entries(byType).map(([type, items]) => `
-                <div class="p-2 bg-white rounded border">
-                    <div class="font-medium">${type}</div>
-                    <div class="text-sm text-gray-600">${items.length} item${items.length !== 1 ? 's' : ''}</div>
-                </div>
-            `).join('');
+        const TYPE_LABELS = {
+            'use_case_yaml':    'Requirements',
+            'domain_diagram':   'Domain Diagram',
+            'sequence_diagram': 'Sequence Diagram',
+            'class_diagram':    'Class Diagram',
+            'source_code':      'Source Code',
+            'unit_tests':       'Tests',
+            'uat_checklist':    'UAT Checklist',
+            'dockerfile':       'Dockerfile',
+            'deployment_config':'Deployment Config',
+        };
 
-            document.getElementById('artifact-types').innerHTML = typesHtml || '<div class="text-gray-500">No artifacts</div>';
+        function typeLabel(t) {
+            return TYPE_LABELS[t] || t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
 
-            // Update artifact list
-            const listHtml = artifacts.map(artifact => `
-                <div class="p-3 bg-white rounded border hover:bg-gray-50 cursor-pointer artifact-item" data-id="${artifact.id}">
-                    <div class="flex justify-between items-center">
-                        <div>
-                            <div class="font-medium">${artifact.name}</div>
-                            <div class="text-sm text-gray-600">${artifact.artifact_type || 'unknown'}</div>
+        function renderArtifactList(artifacts) {
+            const listEl = document.getElementById('artifact-list');
+            if (!artifacts.length) {
+                listEl.innerHTML = '<div class="text-gray-500 text-center py-4">No artifacts match this filter</div>';
+                return;
+            }
+            listEl.innerHTML = artifacts.map(artifact => `
+                <div class="p-3 bg-white rounded border hover:bg-blue-50 cursor-pointer artifact-item flex justify-between items-center"
+                     data-id="${artifact.id}">
+                    <div class="flex items-center gap-2 min-w-0">
+                        <span class="text-lg">${artifactIcon(artifact.name)}</span>
+                        <div class="min-w-0">
+                            <div class="font-medium truncate">${artifact.name}</div>
+                            <div class="text-xs text-gray-500">${typeLabel(artifact.artifact_type || '')}</div>
                         </div>
-                        <div class="text-sm text-gray-500">
-                            ${new Date(artifact.created_at).toLocaleTimeString()}
-                        </div>
+                    </div>
+                    <div class="text-xs text-gray-400 ml-2 whitespace-nowrap">
+                        ${new Date(artifact.created_at).toLocaleTimeString()}
                     </div>
                 </div>
             `).join('');
 
-            document.getElementById('artifact-list').innerHTML = listHtml || '<div class="text-gray-500">No artifacts</div>';
-
-            // Add click listeners
-            document.querySelectorAll('.artifact-item').forEach(item => {
+            listEl.querySelectorAll('.artifact-item').forEach(item => {
                 item.addEventListener('click', function() {
-                    const artifactId = this.getAttribute('data-id');
-                    loadArtifactContent(artifactId);
+                    listEl.querySelectorAll('.artifact-item').forEach(i => i.classList.remove('bg-blue-100'));
+                    this.classList.add('bg-blue-100');
+                    loadArtifactContent(this.getAttribute('data-id'));
                 });
             });
+        }
+
+        function artifactIcon(name) {
+            if (!name) return '';
+            if (name.endsWith('.puml')) return '<i class="fas fa-project-diagram text-purple-500"></i>';
+            if (name.endsWith('.py'))   return '<i class="fas fa-code text-blue-500"></i>';
+            if (name.endsWith('.md'))   return '<i class="fas fa-file-alt text-green-600"></i>';
+            if (name.endsWith('.yaml') || name.endsWith('.yml')) return '<i class="fas fa-file-code text-yellow-600"></i>';
+            if (name.endsWith('.txt'))  return '<i class="fas fa-file-lines text-gray-500"></i>';
+            if (name === 'Dockerfile')  return '<i class="fab fa-docker text-blue-400"></i>';
+            return '<i class="fas fa-file text-gray-400"></i>';
+        }
+
+        function updateArtifactsUI(artifacts) {
+            _allArtifacts = artifacts;
+
+            // Build type dropdown
+            const byType = {};
+            artifacts.forEach(a => {
+                const t = a.artifact_type || 'unknown';
+                byType[t] = (byType[t] || 0) + 1;
+            });
+
+            const filterEl = document.getElementById('artifact-type-filter');
+            const currentVal = filterEl.value;
+            filterEl.innerHTML = `<option value="">All types (${artifacts.length})</option>` +
+                Object.entries(byType)
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([t, n]) => `<option value="${t}" ${t === currentVal ? 'selected' : ''}>${typeLabel(t)} (${n})</option>`)
+                    .join('');
+
+            applyArtifactFilter();
+        }
+
+        function applyArtifactFilter() {
+            const selected = document.getElementById('artifact-type-filter').value;
+            const filtered = selected
+                ? _allArtifacts.filter(a => (a.artifact_type || 'unknown') === selected)
+                : _allArtifacts;
+            const countEl = document.getElementById('artifact-count');
+            countEl.textContent = selected
+                ? `${filtered.length} of ${_allArtifacts.length} artifact${_allArtifacts.length !== 1 ? 's' : ''}`
+                : '';
+            renderArtifactList(filtered);
         }
 
         async function loadArtifactContent(artifactId) {
@@ -997,13 +1200,66 @@
         function showArtifactContent(artifact) {
             document.getElementById('artifact-preview').classList.remove('hidden');
 
-            const contentElement = document.getElementById('artifact-content');
-            contentElement.textContent = artifact.content || '(No content)';
-            contentElement.className = artifact.artifact_type === 'source_code' ? 'python' : '';
+            const name = artifact.name || artifact.file_path || '';
+            const isPuml = name.endsWith('.puml') || artifact.artifact_type === 'uml_diagram';
+            const isMd   = name.endsWith('.md');
 
-            // Re-highlight syntax
-            if (hljs) {
-                hljs.highlightElement(contentElement);
+            const diagramEl  = document.getElementById('artifact-diagram');
+            const markdownEl = document.getElementById('artifact-markdown');
+            const codeEl     = document.getElementById('artifact-code');
+
+            // Hide all panels first
+            diagramEl.classList.add('hidden');
+            markdownEl.classList.add('hidden');
+            codeEl.classList.add('hidden');
+
+            if (isPuml) {
+                diagramEl.classList.remove('hidden');
+                const loading = document.getElementById('diagram-loading');
+                const svgEl   = document.getElementById('diagram-svg');
+                loading.classList.remove('hidden');
+                svgEl.innerHTML = '';
+
+                fetch('/api/render-puml', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({content: artifact.content || ''})
+                })
+                .then(r => r.text())
+                .then(svg => {
+                    loading.classList.add('hidden');
+                    svgEl.innerHTML = svg;
+                    const svgNode = svgEl.querySelector('svg');
+                    if (svgNode) {
+                        svgNode.style.maxWidth = '100%';
+                        svgNode.removeAttribute('width');
+                        svgNode.removeAttribute('height');
+                    }
+                })
+                .catch(err => {
+                    loading.classList.add('hidden');
+                    svgEl.textContent = 'Failed to render diagram: ' + err;
+                });
+
+            } else if (isMd) {
+                markdownEl.classList.remove('hidden');
+                const mdEl = document.getElementById('markdown-content');
+                if (typeof marked !== 'undefined') {
+                    mdEl.innerHTML = marked.parse(artifact.content || '');
+                    // Syntax-highlight any fenced code blocks inside the rendered markdown
+                    mdEl.querySelectorAll('pre code').forEach(block => {
+                        if (hljs) hljs.highlightElement(block);
+                    });
+                } else {
+                    mdEl.textContent = artifact.content || '(No content)';
+                }
+
+            } else {
+                codeEl.classList.remove('hidden');
+                const contentElement = document.getElementById('artifact-content');
+                contentElement.textContent = artifact.content || '(No content)';
+                contentElement.className = artifact.artifact_type === 'source_code' ? 'python' : '';
+                if (hljs) hljs.highlightElement(contentElement);
             }
         }
 
@@ -1056,8 +1312,10 @@
             // Switch to pipeline tab
             document.querySelector('.tab-link[data-tab="pipeline"]').click();
 
-            // Update UI
+            // Reset UI
             document.getElementById('pipeline-project').value = projectId;
+            _pipelineCompleted = false;
+            resetTimeline();
             updatePipelineStatus('Starting pipeline...', 0);
 
             // Enable stop button
@@ -1071,60 +1329,96 @@
         }
 
         function updateAgentStatuses(agentsExecuted) {
-            // Reset all agents to ready
+            // Reset dashboard agent cards to ready
             document.querySelectorAll('[id^="agent-status-"]').forEach(el => {
                 el.textContent = 'Ready';
                 el.className = 'text-xs mt-1';
             });
 
-            // Update executed agents
             if (agentsExecuted) {
-                agentsExecuted.forEach(agent => {
-                    const agentName = agent.agent.toLowerCase().replace('agent', '').trim();
-                    const element = document.getElementById(`agent-status-${agentName}`);
-                    if (element) {
-                        element.textContent = agent.status === 'success' ? '✓ Completed' : '✗ Failed';
-                        element.className = `text-xs mt-1 ${agent.status === 'success' ? 'text-green-600' : 'text-red-600'}`;
-                    }
+                agentsExecuted.forEach(ae => {
+                    setAgentCard(ae.agent, ae.status === 'success' ? 'done' : 'error', ae.time_ms);
                 });
             }
         }
 
         // Interactive BA functions
         function startInteractiveBA(projectName, domain) {
-            // Interactive BA is not available in web UI
-            alert(
-                'Interactive requirement elicitation is not available in the web UI.\n\n' +
-                'Please use the CLI command instead:\n' +
-                '```\n' +
-                'umlagents interactive\n' +
-                '```\n\n' +
-                'Or upload a YAML requirements file using the upload feature above.'
-            );
-            
-            // Optionally, focus on the YAML upload section
-            document.getElementById('yaml-path').focus();
+            if (!projectName) {
+                alert('Please enter a project name first.');
+                return;
+            }
+            sendWebSocketMessage({
+                type: 'ba_interactive',
+                project_name: projectName,
+                domain: domain || ''
+            });
+            addActivity(`Starting interactive BA session for "${projectName}"...`, 'info');
         }
 
         function startInteractiveSessionUI(projectName, domain) {
             addActivity(`Interactive BA started for "${projectName}"`, 'info');
             document.querySelector('.tab-link[data-tab="requirements"]').click();
+            document.getElementById('interactive-session').classList.remove('hidden');
+            document.getElementById('answer-input').value = '';
+            document.getElementById('current-question').textContent = 'Loading first question…';
+            document.getElementById('question-number').textContent = '1';
+            document.getElementById('total-questions').textContent = '7';
+            const phaseEl = document.getElementById('phase-label');
+            if (phaseEl) phaseEl.textContent = 'Phase: Project Vision';
+            const submitBtn = document.getElementById('btn-submit-answer');
+            if (submitBtn) submitBtn.disabled = false;
         }
 
-        function showInteractiveQuestion(question, current, total) {
+        function showInteractiveQuestion(question, phaseNumber, totalPhases, phaseLabel) {
             document.getElementById('current-question').textContent = question;
-            document.getElementById('question-number').textContent = current;
-            document.getElementById('total-questions').textContent = total;
+            document.getElementById('question-number').textContent = phaseNumber || '?';
+            document.getElementById('total-questions').textContent = totalPhases || 7;
+            // Show phase label if the element exists
+            const phaseEl = document.getElementById('phase-label');
+            if (phaseEl) phaseEl.textContent = phaseLabel ? `Phase: ${phaseLabel}` : '';
             document.getElementById('answer-input').value = '';
+            document.getElementById('answer-input').focus();
+            addActivity(`Phase ${phaseNumber}/${totalPhases} (${phaseLabel}): ${question.substring(0, 80)}...`, 'info');
+        }
 
-            addActivity(`Question ${current}/${total}: ${question}`, 'info');
+        function showBASynthesizing(message) {
+            const questionEl = document.getElementById('current-question');
+            if (questionEl) questionEl.textContent = message || 'Synthesizing requirements...';
+            const submitBtn = document.getElementById('btn-submit-answer');
+            if (submitBtn) submitBtn.disabled = true;
+            addActivity(message || 'Synthesizing requirements...', 'info');
         }
 
         function endInteractiveSessionUI(projectName) {
             document.getElementById('interactive-session').classList.add('hidden');
             addActivity(`Interactive BA completed for "${projectName}"`, 'success');
-            alert(`Interactive session completed for "${projectName}". Project created.`);
+            alert(`Session complete for "${projectName}". Project created — you can now run the pipeline.`);
             loadProjects();
+        }
+
+        function submitBAAnswer() {
+            const answer = document.getElementById('answer-input').value;
+            sendWebSocketMessage({ type: 'ba_answer', answer: answer });
+            document.getElementById('answer-input').value = '';
+        }
+
+        // Wire up Submit / Skip answer buttons (called once DOM is ready)
+        function setupInteractiveBAButtons() {
+            document.getElementById('btn-submit-answer').addEventListener('click', submitBAAnswer);
+
+            document.getElementById('btn-skip-question').addEventListener('click', function() {
+                sendWebSocketMessage({ type: 'ba_answer', answer: '' });
+                document.getElementById('answer-input').value = '';
+            });
+
+            // Ctrl+Enter submits from the textarea
+            document.getElementById('answer-input').addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && e.ctrlKey) {
+                    e.preventDefault();
+                    submitBAAnswer();
+                }
+            });
         }
 
         function loadYAML(yamlPath) {
@@ -1258,6 +1552,207 @@
         function viewProjectDetails(projectId) {
             // In a full implementation, this would show a detailed project view
             alert(`Viewing project ${projectId}. This feature is under development.`);
+        }
+
+        // ── Agent event handling ──────────────────────────────────────────────
+
+        let _runningAgentStartTime = null;
+        let _runningAgentName = null;
+        let _agentTimerInterval = null;
+        let _pipelineCompleted = false;  // prevents stale agent events from overriding 100%
+
+        const AGENT_PROGRESS = {
+            'BAAgent':        { started: 5,  completed: 12 },
+            'ArchitectAgent': { started: 15, completed: 25 },
+            'DesignAgent':    { started: 28, completed: 38 },
+            'DeveloperAgent': { started: 42, completed: 60 },
+            'TesterAgent':    { started: 63, completed: 73 },
+            'FrontendAgent':  { started: 76, completed: 86 },
+            'DeployerAgent':  { started: 88, completed: 95 },
+        };
+
+        // Map full class names → agent card key
+        const AGENT_KEY = {
+            'BAAgent': 'ba', 'ArchitectAgent': 'architect', 'DesignAgent': 'design',
+            'DeveloperAgent': 'developer', 'TesterAgent': 'tester',
+            'FrontendAgent': 'frontend', 'DeployerAgent': 'deployer',
+            'OrchestratorAgent': 'orchestrator',
+        };
+
+        function handleAgentEvent(eventType, data) {
+            const agent = data.agent || '';
+            if (eventType === 'agent_started') {
+                _runningAgentName = agent;
+                _runningAgentStartTime = Date.now();
+                setAgentCard(agent, 'running', null);
+                if (!_pipelineCompleted) {
+                    showRunningBanner(agent, 'is running');
+                    if (_agentTimerInterval) clearInterval(_agentTimerInterval);
+                    _agentTimerInterval = setInterval(tickRunningBanner, 1000);
+                    const prog = AGENT_PROGRESS[agent];
+                    if (prog) updatePipelineStatus(`${agent} running...`, prog.started);
+                }
+                addActivity(`${agent} started`, 'info');
+
+            } else if (eventType === 'agent_completed') {
+                if (_runningAgentName === agent) {
+                    if (_agentTimerInterval) { clearInterval(_agentTimerInterval); _agentTimerInterval = null; }
+                    _runningAgentName = null;
+                    if (!_pipelineCompleted) hideRunningBanner();
+                }
+                const hasError = !!data.error;
+                const ms = data.duration_ms || 0;
+                setAgentCard(agent, hasError ? 'error' : 'done', ms);
+                const dur = ms > 60000
+                    ? `${Math.floor(ms/60000)}m ${Math.round((ms%60000)/1000)}s`
+                    : `${(ms/1000).toFixed(1)}s`;
+                addActivity(`${agent} ${hasError ? 'FAILED' : 'completed'} in ${dur}`, hasError ? 'error' : 'success');
+                if (!_pipelineCompleted) {
+                    const prog = AGENT_PROGRESS[agent];
+                    if (prog) updatePipelineStatus(`${agent} done`, prog.completed);
+                }
+
+            } else if (eventType === 'api_call_start') {
+                setAgentCard(agent, 'api', null);
+                updateRunningBannerStep('calling Claude API...');
+
+            } else if (eventType === 'api_call_success') {
+                setAgentCard(agent, 'running', null);
+                updateRunningBannerStep('processing response...');
+                addActivity(`${agent}: API response in ${((data.duration_ms||0)/1000).toFixed(1)}s`, 'info');
+
+            } else if (eventType === 'api_call_failed') {
+                setAgentCard(agent, 'error', null);
+                const errMsg = data.error || 'unknown error';
+                const isCredit = errMsg.toLowerCase().includes('credit') || errMsg.toLowerCase().includes('billing');
+                addActivity(`${agent}: API FAILED — ${errMsg}`, 'error');
+                if (isCredit) {
+                    addActivity('ACTION REQUIRED: Top up credits at console.anthropic.com/settings/billing', 'error');
+                }
+
+            } else if (eventType === 'artifact_generated') {
+                addActivity(`${agent}: saved ${data.filepath ? data.filepath.split(/[\\/]/).pop() : 'artifact'}`, 'success');
+
+            } else {
+                // Generic fallback
+                if (data.activity) addActivity(`${agent || 'System'}: ${data.activity}`, 'info');
+            }
+        }
+
+        // Connector line IDs in pipeline order
+        const CONN_LINES = [
+            ['BAAgent',        'line-BA-Arch'],
+            ['ArchitectAgent', 'line-Arch-Design'],
+            ['DesignAgent',    'line-Design-Dev'],
+            ['DeveloperAgent', 'line-Dev-Test'],
+            ['TesterAgent',    'line-Test-Frontend'],
+            ['FrontendAgent',  'line-Frontend-Deploy'],
+        ];
+
+        function _fmtMs(ms) {
+            if (!ms) return '';
+            return ms < 60000 ? `${(ms/1000).toFixed(1)}s` : `${Math.floor(ms/60000)}m ${Math.round((ms%60000)/1000)}s`;
+        }
+
+        function setAgentCard(agentName, status, durationMs) {
+            // Update dashboard agent card (small text)
+            const key = AGENT_KEY[agentName] || agentName.toLowerCase().replace('agent','');
+            const cardEl = document.getElementById(`agent-status-${key}`);
+            if (cardEl) {
+                const texts = { running:'Running...', api:'Calling API...', done:`Done ${_fmtMs(durationMs)}`, error:'Failed', skipped:'Skipped' };
+                const classes = { running:'text-xs mt-1 text-blue-600 font-semibold', api:'text-xs mt-1 text-purple-600 font-semibold', done:'text-xs mt-1 text-green-600', error:'text-xs mt-1 text-red-600 font-bold', skipped:'text-xs mt-1 text-gray-400' };
+                cardEl.textContent  = texts[status]  || status;
+                cardEl.className    = classes[status] || 'text-xs mt-1';
+            }
+
+            // Update timeline step
+            const iconEl   = document.getElementById(`step-icon-${agentName}`);
+            const statusEl = document.getElementById(`step-status-${agentName}`);
+            const durEl    = document.getElementById(`step-dur-${agentName}`);
+            if (!iconEl) return;
+
+            // Remove all state classes
+            iconEl.classList.remove('step-pending','step-running','step-api','step-done','step-error','step-skipped');
+
+            if (status === 'running') {
+                iconEl.classList.add('step-running');
+                if (statusEl) statusEl.textContent = 'Running...';
+                if (durEl)    durEl.textContent = '';
+                _updateConnBefore(agentName, 'running');
+            } else if (status === 'api') {
+                iconEl.classList.add('step-api');
+                if (statusEl) statusEl.textContent = 'Calling API...';
+            } else if (status === 'done') {
+                iconEl.classList.add('step-done');
+                iconEl.innerHTML = '<i class="fas fa-check"></i>';
+                if (statusEl) statusEl.textContent = 'Done';
+                if (durEl)    durEl.textContent = _fmtMs(durationMs);
+                _updateConnAfter(agentName, 'done');
+            } else if (status === 'error') {
+                iconEl.classList.add('step-error');
+                iconEl.innerHTML = '<i class="fas fa-times"></i>';
+                if (statusEl) statusEl.textContent = 'Failed';
+                if (durEl)    durEl.textContent = _fmtMs(durationMs);
+                _updateConnAfter(agentName, 'error');
+            } else if (status === 'skipped') {
+                iconEl.classList.add('step-skipped');
+                if (statusEl) statusEl.textContent = 'Skipped';
+            }
+        }
+
+        function _updateConnBefore(agentName, state) {
+            // The connector TO this agent (its predecessor's line)
+            const prev = CONN_LINES.find(([src]) => {
+                const agents = ['BAAgent','ArchitectAgent','DesignAgent','DeveloperAgent','TesterAgent','FrontendAgent','DeployerAgent'];
+                const srcIdx = agents.indexOf(src);
+                const tgtIdx = agents.indexOf(agentName);
+                return tgtIdx === srcIdx + 1;
+            });
+            if (prev) {
+                const el = document.getElementById(prev[1]);
+                if (el) { el.classList.remove('conn-pending','conn-done','conn-running','conn-error'); el.classList.add('conn-running'); }
+            }
+        }
+
+        function _updateConnAfter(agentName, state) {
+            const line = CONN_LINES.find(([src]) => src === agentName);
+            if (line) {
+                const el = document.getElementById(line[1]);
+                if (el) { el.classList.remove('conn-pending','conn-done','conn-running','conn-error'); el.classList.add(state === 'done' ? 'conn-done' : 'conn-error'); }
+            }
+        }
+
+        function resetTimeline() {
+            const agents = ['BAAgent','ArchitectAgent','DesignAgent','DeveloperAgent','TesterAgent','FrontendAgent','DeployerAgent'];
+            const ICONS  = { BAAgent:'fa-file-alt', ArchitectAgent:'fa-drafting-compass', DesignAgent:'fa-shapes', DeveloperAgent:'fa-code', TesterAgent:'fa-vial', FrontendAgent:'fa-desktop', DeployerAgent:'fa-rocket' };
+            agents.forEach(a => {
+                const iconEl = document.getElementById(`step-icon-${a}`);
+                if (iconEl) { iconEl.className = 'step-icon step-pending'; iconEl.innerHTML = `<i class="fas ${ICONS[a]}"></i>`; }
+                const stEl = document.getElementById(`step-status-${a}`);
+                if (stEl) stEl.textContent = 'Pending';
+                const dEl = document.getElementById(`step-dur-${a}`);
+                if (dEl) dEl.textContent = '';
+            });
+            ['line-BA-Arch','line-Arch-Design','line-Design-Dev','line-Dev-Test','line-Test-Frontend','line-Frontend-Deploy'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.classList.remove('conn-done','conn-running','conn-error'); el.classList.add('conn-pending'); }
+            });
+        }
+
+        // Elapsed timer for the currently running step
+        function showRunningBanner() {} // kept for backward compat — timeline replaces it
+        function hideRunningBanner() {}
+        function updateRunningBannerStep(step) {
+            const statusEl = document.getElementById(`step-status-${_runningAgentName}`);
+            if (statusEl) statusEl.textContent = step;
+        }
+
+        function tickRunningBanner() {
+            if (!_runningAgentStartTime || !_runningAgentName) return;
+            const s = Math.round((Date.now() - _runningAgentStartTime) / 1000);
+            const fmt = s < 60 ? `${s}s` : `${Math.floor(s/60)}m ${s%60}s`;
+            const durEl = document.getElementById(`step-dur-${_runningAgentName}`);
+            if (durEl) durEl.textContent = fmt;
         }
     </script>
 </body>

@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>__APP_TITLE__</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet"/>
+<style>
+:root {
+  --sidebar-bg: __BRAND_COLOR__;
+  --sidebar-width: 240px;
+  --topbar-h: 56px;
+  --card-radius: 12px;
+  --font: 'Inter', system-ui, sans-serif;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body { margin: 0; font-family: var(--font); background: #f0f2f5; color: #1a1d23; }
+
+/* ── Sidebar ── */
+#sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-width); background: var(--sidebar-bg);
+  display: flex; flex-direction: column; z-index: 200; overflow-y: auto;
+}
+.sidebar-logo {
+  padding: 18px 20px 14px; border-bottom: 1px solid rgba(255,255,255,.12);
+}
+.sidebar-logo .app-name { font-size: .95rem; font-weight: 700; color: #fff; margin: 0; }
+.sidebar-logo .app-sub  { font-size: .72rem; color: rgba(255,255,255,.55); margin: 2px 0 0; }
+.sidebar-section { padding: 20px 12px 4px; font-size: .65rem; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.4); }
+.sidebar-item {
+  display: flex; align-items: center; gap: 10px;
+  margin: 1px 8px; padding: 9px 12px; border-radius: 8px;
+  color: rgba(255,255,255,.75); font-size: .825rem; font-weight: 500;
+  cursor: pointer; text-decoration: none; transition: background .15s, color .15s;
+}
+.sidebar-item:hover { background: rgba(255,255,255,.1); color: #fff; }
+.sidebar-item.active { background: rgba(255,255,255,.18); color: #fff; font-weight: 600; }
+.sidebar-item .bi { font-size: .95rem; opacity: .8; flex-shrink: 0; }
+.sidebar-badge {
+  margin-left: auto; background: rgba(255,255,255,.2); color: #fff;
+  font-size: .6rem; font-weight: 700; padding: 2px 6px; border-radius: 20px;
+}
+
+/* ── Topbar ── */
+#topbar {
+  position: fixed; top: 0; left: var(--sidebar-width); right: 0;
+  height: var(--topbar-h); background: #fff; border-bottom: 1px solid #e5e9f0;
+  display: flex; align-items: center; padding: 0 28px; gap: 12px; z-index: 100;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+}
+#topbar .page-title { font-size: 1rem; font-weight: 700; color: #1a1d23; flex: 1; }
+#health-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 12px; border-radius: 20px; font-size: .75rem; font-weight: 600;
+  background: #f0f2f5; color: #6b7280;
+}
+#health-badge.online  { background: #dcfce7; color: #166534; }
+#health-badge.offline { background: #fee2e2; color: #991b1b; }
+#health-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+
+/* ── Main ── */
+#main {
+  margin-left: var(--sidebar-width);
+  padding: calc(var(--topbar-h) + 24px) 28px 40px;
+  min-height: 100vh;
+}
+.panel { display: none; } .panel.active { display: block; }
+.panel-header { margin-bottom: 24px; }
+.panel-header h4 { font-size: 1.15rem; font-weight: 700; margin: 0 0 4px; }
+.panel-header p  { font-size: .82rem; color: #6b7280; margin: 0; }
+
+/* ── Endpoint card ── */
+.ep-card {
+  background: #fff; border-radius: var(--card-radius);
+  border: 1px solid #e5e9f0; margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  transition: box-shadow .2s;
+}
+.ep-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.ep-card-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px; border-bottom: 1px solid #f0f2f5;
+  border-radius: var(--card-radius) var(--card-radius) 0 0;
+}
+.ep-card-body { padding: 20px; }
+
+/* ── Method badges ── */
+.method {
+  font-size: .65rem; font-weight: 700; padding: 3px 8px;
+  border-radius: 5px; text-transform: uppercase; letter-spacing: .04em;
+  flex-shrink: 0;
+}
+.method-get    { background: #dcfce7; color: #15803d; }
+.method-post   { background: #dbeafe; color: #1d4ed8; }
+.method-delete { background: #fee2e2; color: #b91c1c; }
+.method-put    { background: #ffedd5; color: #c2410c; }
+.method-patch  { background: #f3e8ff; color: #7e22ce; }
+
+.ep-path    { font-family: 'SF Mono', 'Fira Code', monospace; font-size: .8rem; color: #374151; }
+.ep-summary { font-size: .8rem; color: #9ca3af; margin-left: auto; }
+
+/* ── Forms ── */
+.form-label { font-size: .78rem; font-weight: 600; color: #374151; margin-bottom: 5px; }
+.form-control, .form-select {
+  font-size: .85rem; border: 1.5px solid #e5e9f0; border-radius: 8px;
+  padding: 8px 12px; transition: border-color .15s, box-shadow .15s;
+}
+.form-control:focus, .form-select:focus {
+  border-color: var(--sidebar-bg); box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+.required-star { color: #ef4444; }
+
+/* ── Buttons ── */
+.btn { border-radius: 8px; font-size: .82rem; font-weight: 600; padding: 8px 18px; }
+.btn-primary   { background: var(--sidebar-bg); border-color: var(--sidebar-bg); }
+.btn-primary:hover { filter: brightness(1.1); border-color: transparent; }
+.btn-sm { padding: 6px 14px; font-size: .78rem; }
+.btn-icon { width: 34px; height: 34px; padding: 0; display:inline-flex; align-items:center; justify-content:center; }
+
+/* ── Table ── */
+.table-wrapper { border-radius: 8px; border: 1px solid #e5e9f0; overflow: hidden; margin-top: 14px; }
+.table { margin: 0; font-size: .82rem; }
+.table thead th { background: #f8fafc; font-weight: 600; font-size: .75rem;
+  text-transform: uppercase; letter-spacing: .05em; color: #6b7280;
+  border-bottom: 1px solid #e5e9f0; padding: 10px 14px; }
+.table tbody td { padding: 10px 14px; border-bottom: 1px solid #f0f2f5; vertical-align: middle; }
+.table tbody tr:last-child td { border-bottom: none; }
+.table tbody tr:hover { background: #f8fafc; }
+
+/* ── Response box ── */
+.resp-toggle {
+  display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+  font-size: .75rem; font-weight: 600; color: #6b7280; cursor: pointer;
+  padding: 5px 10px; border-radius: 6px; background: #f0f2f5;
+  border: none; transition: background .15s;
+}
+.resp-toggle:hover { background: #e5e9f0; color: #374151; }
+.resp-box {
+  display: none; margin-top: 10px; background: #0f172a; color: #7dd3fc;
+  border-radius: 8px; padding: 14px 16px; font-size: .75rem;
+  font-family: 'SF Mono','Fira Code',monospace; white-space: pre-wrap;
+  word-break: break-all; max-height: 320px; overflow-y: auto;
+}
+
+/* ── Alert ── */
+.ep-alert { font-size: .82rem; border-radius: 8px; margin-bottom: 14px; }
+
+/* ── Toast ── */
+#toast-area {
+  position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 8px; align-items: flex-end;
+}
+.toast-pill {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border-radius: 10px; font-size: .82rem; font-weight: 500;
+  color: #fff; max-width: 360px; box-shadow: 0 4px 16px rgba(0,0,0,.15);
+  animation: slideIn .2s ease; pointer-events: none;
+}
+.toast-ok  { background: #16a34a; }
+.toast-err { background: #dc2626; }
+@keyframes slideIn { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<nav id="sidebar">
+  <div class="sidebar-logo">
+    <p class="app-name">__APP_TITLE__</p>
+    <p class="app-sub">__APP_DESC__</p>
+  </div>
+  <div id="nav-root"></div>
+</nav>
+
+<!-- Topbar -->
+<div id="topbar">
+  <span class="page-title" id="page-title">Dashboard</span>
+  <button id="health-badge">
+    <span class="dot"></span><span id="health-text">Checking API...</span>
+  </button>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="panels"></div>
+</div>
+
+<div id="toast-area"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+function toast(msg, ok) {
+  const el = document.createElement('div');
+  el.className = 'toast-pill ' + (ok ? 'toast-ok' : 'toast-err');
+  el.innerHTML = `<i class="bi ${ok ? 'bi-check-circle' : 'bi-exclamation-circle'}"></i>${msg}`;
+  document.getElementById('toast-area').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+async function apiFetch(url, opts = {}) {
+  try {
+    const r = await fetch(url, opts);
+    const ct = r.headers.get('content-type') || '';
+    const data = ct.includes('json') ? await r.json() : await r.text();
+    return { ok: r.ok, status: r.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, data: { detail: e.message } };
+  }
+}
+
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar-item').forEach(n => n.classList.remove('active'));
+  const panel = document.getElementById('panel_' + id);
+  if (panel) panel.classList.add('active');
+  const link = document.querySelector(`.sidebar-item[data-panel="${id}"]`);
+  if (link) link.classList.add('active');
+  document.getElementById('page-title').textContent = id.replace(/_/g, ' ');
+}
+
+function toggleResp(id) {
+  const box = document.getElementById('resp_' + id);
+  const btn = document.getElementById('respbtn_' + id);
+  if (!box) return;
+  const visible = box.style.display === 'block';
+  box.style.display = visible ? 'none' : 'block';
+  if (btn) btn.innerHTML = `<i class="bi bi-code-slash me-1"></i>${visible ? 'Show' : 'Hide'} Response`;
+}
+
+function showResp(id, data) {
+  const box = document.getElementById('resp_' + id);
+  if (!box) return;
+  box.textContent = JSON.stringify(data, null, 2);
+  box.style.display = 'block';
+  const btn = document.getElementById('respbtn_' + id);
+  if (btn) btn.innerHTML = '<i class="bi bi-code-slash me-1"></i>Hide Response';
+}
+
+function showAlert(id, ok, msg) {
+  const el = document.getElementById('alert_' + id);
+  if (!el) return;
+  const icon = ok ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill';
+  const cls  = ok ? 'alert-success' : 'alert-danger';
+  el.innerHTML = `<div class="alert ${cls} ep-alert d-flex align-items-center gap-2">
+    <i class="bi ${icon}"></i><span>${msg}</span></div>`;
+}
+
+function renderTable(tbodyId, rows) {
+  const tbody = document.getElementById(tbodyId);
+  const tbl = tbody?.closest('table');
+  if (!tbody) return;
+  if (!Array.isArray(rows)) rows = rows ? [rows] : [];
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="99" class="text-center text-muted py-3">No records found.</td></tr>';
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  const thead = tbl?.querySelector('thead');
+  if (thead) thead.innerHTML = '<tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr>';
+  tbody.innerHTML = rows.map(r =>
+    '<tr>' + cols.map(c => `<td>${r[c] ?? '<span class="text-muted">—</span>'}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+// ── Schema ────────────────────────────────────────────────────────────────────
+
+function resolveSchema(schema, components) {
+  if (!schema) return {};
+  if (schema.$ref) {
+    const name = schema.$ref.split('/').pop();
+    return components?.schemas?.[name] || {};
+  }
+  return schema;
+}
+
+function schemaProperties(schema, components) {
+  const resolved = resolveSchema(schema, components);
+  const props = resolved.properties || {};
+  const required = resolved.required || [];
+  return Object.entries(props).map(([name, def]) => ({
+    name, type: def.type || 'string', format: def.format || '',
+    description: def.description || '', required: required.includes(name),
+    enum: def.enum || null,
+  }));
+}
+
+function isDateField(name, format) {
+  const n = name.toLowerCase();
+  return format === 'date-time' || format === 'date' ||
+    /_at$|_date$|^date_|^start|^end|^from|^to/.test(n);
+}
+
+function inputHtml(name, type, format, description, enumVals, required, id) {
+  const req = required ? 'required' : '';
+  const ph = description || name;
+  if (enumVals) {
+    const opts = enumVals.map(v => `<option value="${v}">${v}</option>`).join('');
+    return `<select class="form-select" id="${id}" name="${name}" ${req}><option value="">— select —</option>${opts}</select>`;
+  }
+  if (type === 'boolean') {
+    return `<select class="form-select" id="${id}" name="${name}"><option value="true">True</option><option value="false">False</option></select>`;
+  }
+  if (type === 'integer' || type === 'number') {
+    return `<input type="number" class="form-control" id="${id}" name="${name}" placeholder="${ph}" ${req}/>`;
+  }
+  if (isDateField(name, format)) {
+    return `<input type="date" class="form-control" id="${id}" name="${name}" ${req}/>`;
+  }
+  return `<input type="text" class="form-control" id="${id}" name="${name}" placeholder="${ph}" ${req}/>`;
+}
+
+function fieldHtml(prop, id) {
+  const label = prop.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const star = prop.required ? ' <span class="required-star">*</span>' : '';
+  return `<div class="col-md-6 mb-3">
+    <label class="form-label">${label}${star}</label>
+    ${inputHtml(prop.name, prop.type, prop.format, prop.description, prop.enum, prop.required, id)}
+  </div>`;
+}
+
+function collectFormData(formId) {
+  const form = document.getElementById(formId);
+  if (!form) return {};
+  const data = {};
+  new FormData(form).forEach((v, k) => {
+    if (v === '') return;
+    const el = form.querySelector(`[name="${k}"]`);
+    if (v === 'true') data[k] = true;
+    else if (v === 'false') data[k] = false;
+    else if (el && el.type === 'number') data[k] = +v;
+    else data[k] = v;
+  });
+  return data;
+}
+
+function pathParams(path) {
+  return [...path.matchAll(/\{(\w+)\}/g)].map(m => m[1]);
+}
+
+function buildUrl(path, formId) {
+  let url = path;
+  pathParams(path).forEach(p => {
+    const el = document.getElementById(formId + '_path_' + p);
+    if (el && el.value) url = url.replace('{' + p + '}', encodeURIComponent(el.value));
+  });
+  return url;
+}
+
+function pathInputsHtml(path, formId) {
+  return pathParams(path).map(p => `
+    <div class="col-md-4 mb-3">
+      <label class="form-label">${p.replace(/_/g,' ')} <span class="required-star">*</span></label>
+      <input type="text" class="form-control" id="${formId}_path_${p}" name="__path_${p}" placeholder="${p}" required/>
+    </div>`).join('');
+}
+
+// ── Card builders ─────────────────────────────────────────────────────────────
+
+function cid(method, path) { return (method + path).replace(/[^a-zA-Z0-9]/g, '_'); }
+
+function buildPostCard(method, path, op, components) {
+  const id = cid(method, path);
+  const fid = 'form_' + id;
+  const props = schemaProperties(op.requestBody?.content?.['application/json']?.schema, components);
+  return `<div class="ep-card">
+  <div class="ep-card-header">
+    <span class="method method-${method}">${method}</span>
+    <span class="ep-path">${path}</span>
+    <span class="ep-summary">${op.summary || ''}</span>
+  </div>
+  <div class="ep-card-body">
+    <div id="alert_${id}"></div>
+    <form id="${fid}" class="row">
+      ${pathInputsHtml(path, fid)}
+      ${props.map(p => fieldHtml(p, fid + '_' + p.name)).join('')}
+      <div class="col-12 mt-1 d-flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send-fill me-2"></i>Submit</button>
+        <button type="reset" class="btn btn-outline-secondary btn-sm">Reset</button>
+      </div>
+    </form>
+    <button class="resp-toggle" id="respbtn_${id}" onclick="toggleResp('${id}')">
+      <i class="bi bi-code-slash me-1"></i>Show Response</button>
+    <pre class="resp-box" id="resp_${id}"></pre>
+  </div>
+</div>`;
+}
+
+function buildGetCard(method, path, op, components) {
+  const id = cid(method, path);
+  const fid = 'form_' + id;
+  const pathPs = pathParams(path);
+  const queryPs = (op.parameters || []).filter(p => p.in === 'query');
+
+  const pathInputs = pathInputsHtml(path, fid);
+  const queryInputs = queryPs.map(p => {
+    const s = p.schema || {};
+    const inp = inputHtml(p.name, s.type || 'string', s.format || '', p.description || '', null, p.required, fid + '_q_' + p.name);
+    const label = p.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+    return `<div class="col-md-4 mb-3">
+      <label class="form-label">${label}${p.required ? ' <span class="required-star">*</span>' : ''}</label>
+      ${inp}
+    </div>`;
+  }).join('');
+
+  const hasInputs = pathPs.length > 0 || queryPs.length > 0;
+
+  return `<div class="ep-card">
+  <div class="ep-card-header">
+    <span class="method method-get">get</span>
+    <span class="ep-path">${path}</span>
+    <span class="ep-summary">${op.summary || ''}</span>
+  </div>
+  <div class="ep-card-body">
+    <div id="alert_${id}"></div>
+    ${hasInputs ? `<form id="${fid}" class="row">${pathInputs}${queryInputs}</form>` : ''}
+    <button class="btn btn-sm" style="background:#ecfdf5;color:#15803d;border:1.5px solid #bbf7d0;font-weight:600" id="btn_${id}">
+      <i class="bi bi-arrow-clockwise me-1"></i>Load Data</button>
+    <div class="table-wrapper">
+      <table class="table"><thead id="thead_${id}"></thead><tbody id="tbody_${id}">
+        <tr><td class="text-center text-muted py-3">Click "Load Data" to fetch records.</td></tr>
+      </tbody></table>
+    </div>
+    <button class="resp-toggle" id="respbtn_${id}" onclick="toggleResp('${id}')">
+      <i class="bi bi-code-slash me-1"></i>Show Response</button>
+    <pre class="resp-box" id="resp_${id}"></pre>
+  </div>
+</div>`;
+}
+
+function buildDeleteCard(method, path, op) {
+  const id = cid(method, path);
+  const fid = 'form_' + id;
+  return `<div class="ep-card">
+  <div class="ep-card-header">
+    <span class="method method-delete">delete</span>
+    <span class="ep-path">${path}</span>
+    <span class="ep-summary">${op.summary || ''}</span>
+  </div>
+  <div class="ep-card-body">
+    <div id="alert_${id}"></div>
+    <form id="${fid}" class="row">
+      ${pathInputsHtml(path, fid)}
+      <div class="col-12 mt-1">
+        <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-trash3-fill me-2"></i>Delete</button>
+      </div>
+    </form>
+    <button class="resp-toggle" id="respbtn_${id}" onclick="toggleResp('${id}')">
+      <i class="bi bi-code-slash me-1"></i>Show Response</button>
+    <pre class="resp-box" id="resp_${id}"></pre>
+  </div>
+</div>`;
+}
+
+// ── Event wiring ──────────────────────────────────────────────────────────────
+
+function wireCard(method, path, op) {
+  const id = cid(method, path);
+  const fid = 'form_' + id;
+
+  if (method === 'get') {
+    const btn = document.getElementById('btn_' + id);
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...';
+      let url = buildUrl(path, fid);
+      const qInputs = [...document.querySelectorAll(`[id^="${fid}_q_"]`)];
+      const qs = qInputs.filter(e => e.value).map(e => {
+        const key = e.id.replace(fid + '_q_', '');
+        return `${key}=${encodeURIComponent(e.value)}`;
+      }).join('&');
+      if (qs) url += '?' + qs;
+      const { ok, data } = await apiFetch(url);
+      showResp(id, data);
+      const rows = Array.isArray(data) ? data
+        : (data.items || data.results || (data && !data.detail ? [data] : []));
+      renderTable('tbody_' + id, rows);
+      toast(ok ? `${rows.length} record(s) loaded` : (data.detail || 'Load failed'), ok);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Load Data';
+    });
+
+  } else if (method === 'delete') {
+    const form = document.getElementById(fid);
+    if (!form) return;
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const url = buildUrl(path, fid);
+      const { ok, data } = await apiFetch(url, { method: 'DELETE' });
+      showResp(id, data);
+      showAlert(id, ok, ok ? 'Deleted successfully.' : (data.detail || 'Delete failed.'));
+      toast(ok ? 'Deleted' : (data.detail || 'Delete failed'), ok);
+    });
+
+  } else {
+    const form = document.getElementById(fid);
+    if (!form) return;
+    form.addEventListener('submit', async e => {
+      e.preventDefault();
+      const url = buildUrl(path, fid);
+      const body = collectFormData(fid);
+      const { ok, data } = await apiFetch(url, {
+        method: method.toUpperCase(),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      showResp(id, data);
+      showAlert(id, ok, ok ? 'Record created successfully.' : (data.detail ? JSON.stringify(data.detail) : 'Request failed.'));
+      toast(ok ? 'Success!' : (data.detail || 'Request failed'), ok);
+      if (ok) form.reset();
+    });
+  }
+}
+
+// ── Tag icon map ──────────────────────────────────────────────────────────────
+
+const TAG_ICONS = {
+  default: 'bi-layers',
+  appointment: 'bi-calendar-check', schedule: 'bi-calendar-week',
+  patient: 'bi-person-heart', doctor: 'bi-person-badge',
+  invoice: 'bi-receipt', billing: 'bi-credit-card',
+  emr: 'bi-database', sync: 'bi-arrow-repeat',
+  user: 'bi-person', auth: 'bi-shield-lock',
+  product: 'bi-box', order: 'bi-cart', report: 'bi-bar-chart',
+};
+
+function tagIcon(tag) {
+  const t = tag.toLowerCase();
+  for (const [k, v] of Object.entries(TAG_ICONS)) {
+    if (t.includes(k)) return v;
+  }
+  return TAG_ICONS.default;
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+async function init() {
+  // Health check
+  const hb = document.getElementById('health-badge');
+  const ht = document.getElementById('health-text');
+  const { ok: healthy } = await apiFetch('/health');
+  hb.className = healthy ? 'online' : 'offline';
+  ht.textContent = healthy ? 'API Online' : 'API Offline';
+
+  // OpenAPI spec
+  const { data: spec } = await apiFetch('/openapi.json');
+  if (!spec?.paths) { console.error('OpenAPI spec unavailable'); return; }
+
+  const components = spec.components || {};
+  const nav = document.getElementById('nav-root');
+  const panels = document.getElementById('panels');
+
+  // Group by tag
+  const groups = {};
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    if (/^\/$|health|openapi|docs|redoc|favicon|well-known/.test(path)) continue;
+    for (const [method, op] of Object.entries(methods)) {
+      if (!['get','post','put','patch','delete'].includes(method)) continue;
+      const tag = op.tags?.[0] || 'General';
+      if (!groups[tag]) groups[tag] = [];
+      groups[tag].push({ method, path, op });
+    }
+  }
+
+  let firstPanel = null;
+  const tags = Object.keys(groups);
+
+  nav.insertAdjacentHTML('beforeend', `<div class="sidebar-section">Endpoints</div>`);
+
+  for (const tag of tags) {
+    const endpoints = groups[tag];
+    const panelId = tag.replace(/[^a-zA-Z0-9]/g, '_');
+    if (!firstPanel) firstPanel = panelId;
+
+    nav.insertAdjacentHTML('beforeend', `
+      <a class="sidebar-item" data-panel="${panelId}"
+         href="#" onclick="showPanel('${panelId}');return false;">
+        <i class="bi ${tagIcon(tag)}"></i>
+        <span>${tag}</span>
+        <span class="sidebar-badge">${endpoints.length}</span>
+      </a>`);
+
+    let cards = '';
+    for (const { method, path, op } of endpoints) {
+      if (method === 'get') cards += buildGetCard(method, path, op, components);
+      else if (method === 'delete') cards += buildDeleteCard(method, path, op);
+      else cards += buildPostCard(method, path, op, components);
+    }
+
+    panels.insertAdjacentHTML('beforeend', `
+      <div class="panel" id="panel_${panelId}">
+        <div class="panel-header">
+          <h4><i class="bi ${tagIcon(tag)} me-2"></i>${tag}</h4>
+          <p>${endpoints.length} endpoint${endpoints.length > 1 ? 's' : ''}</p>
+        </div>
+        ${cards}
+      </div>`);
+
+    for (const { method, path, op } of endpoints) {
+      wireCard(method, path, op);
+    }
+  }
+
+  if (firstPanel) showPanel(firstPanel);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

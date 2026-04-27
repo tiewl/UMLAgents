@@ -6,15 +6,17 @@ Responsibilities (Larman's Transition phase):
 - Generate deployment manifests for cloud platforms
 - Produce environment configuration and secrets management
 - Create CI/CD pipeline definitions
+- Generate project README.md with structure and deployment guide
 """
 import os
 import re
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 
 from .base import BaseAgent
 from ..db.models import (
-    AgentRole, Project, ArtifactType, Artifact
+    AgentRole, Project, UseCase, Actor, ArtifactType, Artifact
 )
 
 
@@ -50,6 +52,8 @@ class DeployerAgent(BaseAgent):
             db_session=db_session,
             project_id=project_id
         )
+        if not os.getenv("UMLAGENTS_DEPLOYERAGENT_MODEL"):
+            self._model = os.getenv("UMLAGENTS_DEFAULT_MODEL", "claude-haiku-4-5-20251001")
 
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -168,6 +172,23 @@ class DeployerAgent(BaseAgent):
                     'file_path': artifact.file_path
                 })
 
+        # Generate README.md at the project root output folder
+        readme_content = self._generate_readme(project, source_artifacts, test_artifacts, deployment_files)
+        readme_path = f"output/project_{project_id}/README.md"
+        readme_artifact = self.save_artifact(
+            filepath=readme_path,
+            content=readme_content,
+            artifact_type=ArtifactType.DEPLOYMENT_CONFIG,
+            metadata={"filename": "README.md", "project_name": project.name},
+        )
+        if readme_artifact:
+            generated_artifacts.append({
+                'id': readme_artifact.id,
+                'name': readme_artifact.name,
+                'artifact_type': readme_artifact.artifact_type.value,
+                'file_path': readme_artifact.file_path,
+            })
+
         # Log completion
         self.log_activity(
             action="generate_deployment",
@@ -223,76 +244,237 @@ class DeployerAgent(BaseAgent):
         test_files = [a.name for a in test_artifacts if a.name.endswith('.py')]
         
         prompt = f"""
-You are tasked with creating production‑ready deployment configuration for the following Python application:
+Generate Docker deployment configuration for this FastAPI web application.
 
 # Project: {project.name}
 **Domain**: {project.domain}
 **Description**: {project.description}
 
-## Application Details
-- **Python Version**: 3.12+ (assume latest stable)
-- **Source Files**: {', '.join(source_files[:10])} ({len(source_files)} total)
-- **Test Files**: {', '.join(test_files[:5])} ({len(test_files)} total)
-- **Dependencies**: {', '.join(dependencies) if dependencies else 'None (standard library only)'}
-- **Entry Point**: `main.py` (assumed)
+## Application files
+- Source: {', '.join(source_files[:10])}
+- Dependencies: {', '.join(dependencies) if dependencies else 'fastapi, uvicorn, sqlalchemy, pydantic, psycopg2-binary'}
 
-## Deployment Requirements
+## STRICT RULES
 
-Generate a complete deployment configuration that includes:
+1. The app is a **FastAPI web service** started with:
+   `uvicorn main:app --host 0.0.0.0 --port 8080`
 
-### 1. Containerization
-- **Dockerfile** with multi‑stage build (development + production)
-- **.dockerignore** file to exclude unnecessary files
-- **docker‑compose.yml** for local development and testing
+2. **Dockerfile** requirements:
+   - Base image: `python:3.12-slim`
+   - Build context is the project root (parent of `deployment/`), so COPY paths are:
+     `COPY code/ /app/` and `COPY tests/ /app/tests/`
+   - Install from `code/requirements.txt`
+   - EXPOSE 8080
+   - CMD runs uvicorn on main:app
 
-### 2. Cloud Deployment (choose one platform)
-- **Kubernetes manifests** (Deployment, Service, ConfigMap, Secret)
-- **AWS ECS/Fargate** task definition and service configuration
-- **Azure Container Apps** deployment configuration
+3. **docker-compose.yml** requirements:
+   - `context: ..` and `dockerfile: deployment/Dockerfile`
+   - `app` service: maps port 8080:8080, sets `DATABASE_URL` pointing to the `db` service
+   - `db` service: postgres:16-alpine, with health check — NO profiles
+   - `app` depends_on db with `condition: service_healthy`
+   - Plain `docker compose up --build` must work with zero extra flags
 
-### 3. CI/CD Pipeline
-- **GitHub Actions workflow** for testing and deployment
-- **GitLab CI/CD pipeline** configuration
+4. Generate ONLY: `Dockerfile` and `docker-compose.yml` — nothing else.
 
-### 4. Environment Configuration
-- **.env.example** template with required environment variables
-- **Configuration management** for different environments (dev, staging, prod)
-
-### 5. Monitoring & Observability
-- **Health check** endpoints and configuration
-- **Logging configuration** (structured JSON logs)
-- **Metrics exposure** (Prometheus metrics if applicable)
-
-## Output Format
-
-Provide each file in a separate code block with the filename as a comment:
+## Output format
 
 ```dockerfile
 # Dockerfile
-... content ...
+...
 ```
 
 ```yaml
 # docker-compose.yml
-... content ...
+...
 ```
-
-```yaml
-# k8s/deployment.yaml
-... content ...
-```
-
-## Important Guidelines
-
-- Follow **security best practices** (non‑root user, minimal base images)
-- Use **specific version tags** (not `latest`)
-- Include **health checks** and **graceful shutdown**
-- Configure **resource limits** for containers
-- Provide **clear documentation** in comments
-- Make the configuration **environment‑aware** (dev/staging/prod)
 """
 
         return prompt
+
+    def _generate_readme(
+        self,
+        project: Project,
+        source_artifacts: List[Artifact],
+        test_artifacts: List[Artifact],
+        deployment_files: Dict[str, str],
+    ) -> str:
+        """Generate a README.md from project data — no LLM call needed."""
+        actors = self.db.query(Actor).filter(Actor.project_id == project.id).all()
+        use_cases = self.db.query(UseCase).filter(UseCase.project_id == project.id).order_by(UseCase.priority).all()
+
+        source_names = [a.name for a in source_artifacts]
+        test_names = [a.name for a in test_artifacts]
+        deploy_names = list(deployment_files.keys())
+        has_docker = any("Dockerfile" in n for n in deploy_names)
+        has_compose = any("docker-compose" in n for n in deploy_names)
+
+        uc_lines = "\n".join(
+            f"| {uc.uc_id} | {uc.title} | {uc.actor.name if uc.actor else 'System'} |"
+            for uc in use_cases
+        ) or "| — | No use cases found | — |"
+
+        actor_lines = "\n".join(
+            f"- **{a.name}** ({a.role}): {a.description}"
+            for a in actors
+        ) or "- No actors found"
+
+        reg = ", ".join(project.regulatory_frameworks or []) or "None"
+
+        frameworks_note = ""
+        if project.regulatory_frameworks:
+            frameworks_note = (
+                "\n> **Compliance note:** This project is subject to "
+                + reg
+                + " requirements. Ensure all environment variables and secrets are managed securely.\n"
+            )
+
+        is_web_app = any(n in source_names for n in ("main.py", "database.py", "models.py"))
+        source_tree = "\n".join(f"    {n}" for n in source_names) or "    (none)"
+        test_tree   = "\n".join(f"    {n}" for n in test_names)   or "    (none)"
+        deploy_tree = "\n".join(f"    {n}" for n in deploy_names) or "    (none)"
+
+        app_name_slug = project.name.lower().replace(' ', '-')
+
+        docker_section = ""
+        if has_docker and has_compose:
+            docker_section = f"""
+## Deploying the Web App
+
+### Prerequisites
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+
+### Start with Docker Compose
+
+```bash
+# From the deployment/ folder
+cd deployment
+
+# Build and start all services (first run downloads images — takes ~1 min)
+docker compose up --build
+
+# Run in the background
+docker compose up --build -d
+
+# View logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+
+# Stop AND wipe the database (clean slate)
+docker compose down -v
+```
+
+### What opens after `docker compose up --build`
+
+| URL | Description |
+|-----|-------------|
+| `http://localhost:8080/` | **Web UI** — Bootstrap 5 app, use this to test all features |
+| `http://localhost:8080/docs` | **Swagger UI** — interactive API explorer |
+| `http://localhost:8080/health` | Health check JSON |
+
+### Testing the app
+
+1. Open `http://localhost:8080/` in your browser.
+2. Use the left sidebar to navigate between use cases.
+3. Fill in the forms and click Submit — each form calls the matching API endpoint.
+4. The "API Response" panel at the bottom of each card shows the raw JSON returned.
+5. Use the "Load" buttons on list sections to fetch existing records.
+
+### Build image only (no Compose)
+
+```bash
+docker build -f deployment/Dockerfile -t {app_name_slug} .
+docker run --rm -p 8080:8080 {app_name_slug}
+```
+"""
+        elif has_docker:
+            docker_section = f"""
+## Docker Deployment
+
+```bash
+docker build -f deployment/Dockerfile -t {app_name_slug} .
+docker run --rm -p 8080:8080 {app_name_slug}
+```
+"""
+
+        return f"""# {project.name}
+
+**Domain:** {project.domain}
+**Generated:** {datetime.now().strftime('%Y-%m-%d')}
+**Regulatory frameworks:** {reg}
+{frameworks_note}
+## Overview
+
+{project.description}
+
+## Actors
+
+{actor_lines}
+
+## Use Cases
+
+| ID | Title | Primary Actor |
+|----|-------|---------------|
+{uc_lines}
+
+## Project Structure
+
+```
+project_{project.id}/
+|
++-- code/               # Generated Python source code
+{source_tree}
+|
++-- tests/              # Automated test suite
+{test_tree}
+|
++-- deployment/         # Docker and deployment configuration
+{deploy_tree}
+|
++-- diagrams/           # UML diagrams (PlantUML)
+    domain_diagram.puml     Use-case overview
+    class_diagram.puml      Class relationships
+    uc*_sequence.puml       Per-use-case sequence diagrams
+|
++-- requirements.yaml   # Source-of-truth requirements (Larman format)
++-- README.md           # This file
+```
+
+## Running Locally (without Docker)
+
+### Prerequisites
+- Python 3.11+
+- pip
+
+### Quick start
+
+```bash
+cd code
+pip install -r requirements.txt
+{"uvicorn main:app --reload --port 8080" if is_web_app else "python main.py"}
+```
+{"Open **http://localhost:8080/** for the web UI, or **http://localhost:8080/docs** for Swagger." if is_web_app else ""}
+
+### Run tests
+
+```bash
+cd tests
+pip install pytest
+pytest -v
+```
+{docker_section}
+## Traceability
+
+Every class and method in `code/` references the use case it implements.
+Every test in `tests/` references the use case it validates.
+The full traceability matrix is captured in `tests/uat_checklist.md`.
+
+## Generated by UMLAgents
+
+This project was generated using the [UMLAgents](https://github.com/tiewl/UMLAgents) pipeline,
+following Craig Larman's OOA/OOD methodology (ISBN 9780137488803).
+"""
 
     def _extract_deployment_files(self, text: str) -> Dict[str, str]:
         """

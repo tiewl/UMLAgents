@@ -34,6 +34,7 @@ class AgentRole(enum.Enum):
     DEVELOPER = "developer"
     TESTER = "tester"
     DEPLOYER = "deployer"
+    FRONTEND = "frontend"
     ORCHESTRATOR = "orchestrator"
 
 class PatternCategory(enum.Enum):
@@ -61,6 +62,7 @@ class ArtifactType(enum.Enum):
     DOCKERFILE = "dockerfile"
     DEPLOYMENT_CONFIG = "deployment_config"
     AUDIT_REPORT = "audit_report"
+    FRONTEND = "frontend"
 
 # ============================================================================
 # Core domain models

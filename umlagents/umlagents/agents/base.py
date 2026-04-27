@@ -1,5 +1,5 @@
 """
-Enhanced base agent with SQLite audit logging and DeepSeek API integration.
+Enhanced base agent with SQLite audit logging and Anthropic API integration.
 Compatible with dice-game-agents pattern but adds Larman methodology alignment.
 """
 import os
@@ -46,12 +46,14 @@ class BaseAgent:
         self.agent_role = agent_role
         self.project_id = project_id
         
-        # DeepSeek API configuration (compatible with dice-game-agents)
-        self.api_key = os.getenv("DEEPSEEK_API_KEY")
-        self.base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-        
-        if not self.api_key or self.api_key == "your_deepseek_api_key_here":
-            print(f"⚠️  WARNING: DEEPSEEK_API_KEY not set. AI features will be disabled.")
+        # Anthropic API configuration
+        self.api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Allow per-agent model override via env, e.g. UMLAGENTS_TESTERAGENT_MODEL=claude-haiku-4-5-20251001
+        env_key = f"UMLAGENTS_{name.upper()}_MODEL"
+        self._model = os.getenv(env_key) or os.getenv("UMLAGENTS_DEFAULT_MODEL", "claude-sonnet-4-6")
+
+        if not self.api_key or self.api_key.startswith("your_"):
+            print(f"[WARNING] ANTHROPIC_API_KEY not set. AI features will be disabled.")
             self.api_key = None
         
         # Database session
@@ -64,95 +66,70 @@ class BaseAgent:
             self.owns_db = True
     
     def call_deepseek(
-        self, 
-        user_prompt: str, 
-        temperature: float = 0.7, 
+        self,
+        user_prompt: str,
+        temperature: float = 0.7,
         max_tokens: int = 4096,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """
-        Send prompt to DeepSeek API with audit logging.
-        
-        Args:
-            user_prompt: The user prompt
-            temperature: Creativity control (0.0-1.0)
-            max_tokens: Maximum response length
-            metadata: Additional metadata for audit log
-            
-        Returns:
-            API response text
-        """
-        import requests
-        
+        """Call Anthropic Claude API (drop-in replacement for the DeepSeek caller)."""
+        import anthropic
+
         if not self.api_key:
-            raise ValueError("DeepSeek API key not configured. Cannot call AI API.")
-        
-        url = f"{self.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "deepseek-chat",
-            "messages": [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }
-        
-        # Log API call start
+            raise ValueError("ANTHROPIC_API_KEY not configured. Cannot call AI API.")
+
         self._log_activity(
             activity="api_call_start",
             details={
                 "prompt_length": len(user_prompt),
                 "temperature": temperature,
                 "max_tokens": max_tokens,
-                "metadata": metadata or {}
-            }
+                "metadata": metadata or {},
+            },
         )
-        
-        print(f"\n{'='*60}")
-        print(f"[{self.name}] Sending request to DeepSeek API...")
-        print(f"{'='*60}")
-        
+
+        print(f"[{self.name}] Calling Anthropic {self._model} ...")
+
         try:
             start_time = datetime.now()
-            response = requests.post(url, headers=headers, json=payload, timeout=120)
-            response.raise_for_status()
-            data = response.json()
-            content = data["choices"][0]["message"]["content"]
-            end_time = datetime.now()
-            
-            elapsed_ms = int((end_time - start_time).total_seconds() * 1000)
-            
+            client = anthropic.Anthropic(api_key=self.api_key, timeout=180.0)
+            message = client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                system=self.system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+                temperature=temperature,
+            )
+            content = message.content[0].text
+            elapsed_ms = int((datetime.now() - start_time).total_seconds() * 1000)
+
             print(f"[{self.name}] Response received ({len(content)} chars, {elapsed_ms}ms)")
-            
-            # Log API call success
+
             self._log_activity(
                 activity="api_call_success",
                 details={
                     "response_length": len(content),
                     "elapsed_ms": elapsed_ms,
-                    "model": data.get("model", "unknown"),
-                    "usage": data.get("usage", {})
-                }
+                    "model": self._model,
+                    "usage": {
+                        "input_tokens": message.usage.input_tokens,
+                        "output_tokens": message.usage.output_tokens,
+                    },
+                },
             )
-            
             return content
-            
+
         except Exception as e:
-            # Log API call failure
             self._log_activity(
                 activity="api_call_failed",
-                details={
-                    "error": str(e),
-                    "error_type": type(e).__name__
-                }
+                details={"error": str(e), "error_type": type(e).__name__},
             )
+            # Re-raise credit errors as a distinct type so the orchestrator can halt
+            if "credit balance is too low" in str(e).lower() or "billing" in str(e).lower():
+                raise InsufficientCreditsError(str(e)) from e
             raise
-    
+
+
     def run(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """
         Execute agent's task. Must be overridden by subclasses.
@@ -370,3 +347,7 @@ class BaseAgent:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+class InsufficientCreditsError(RuntimeError):
+    """Raised when the Anthropic API key has no remaining credits."""

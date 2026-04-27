@@ -19,21 +19,19 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from pathlib import Path
 
-# Load environment variables from .env file
+# Load .env if present (local dev). In Docker, vars come from docker-compose environment.
 from dotenv import load_dotenv
-# Load .env from project root (parent of web directory)
-project_root = Path(__file__).parent.parent
-env_path = project_root / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-    print(f"Loaded environment from {env_path}")
-else:
-    print(f"Warning: .env file not found at {env_path}")
+_here = Path(__file__).parent
+for _candidate in [_here.parent, _here.parent.parent, _here.parent.parent.parent]:
+    if (_candidate / ".env").exists():
+        load_dotenv(dotenv_path=_candidate / ".env")
+        print(f"Loaded environment from {_candidate / '.env'}")
+        break
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query, UploadFile, File, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -41,7 +39,7 @@ from pydantic import BaseModel
 
 # Import UMLAgents core
 try:
-    from umlagents.db.models import init_db, get_session, Project, Phase, Artifact, AuditLog, AgentRole
+    from umlagents.db.models import init_db, get_session, Base, Project, Phase, Artifact, AuditLog, AgentRole
     from umlagents.agents.orchestrator_agent import OrchestratorAgent
     from umlagents.agents.ba_agent import BAAgent
     from umlagents.utils.events import event_bus, Event
@@ -60,14 +58,13 @@ PORT = int(os.getenv("UMLAGENTS_WEB_PORT", "8080"))
 HOST = os.getenv("UMLAGENTS_WEB_HOST", "0.0.0.0")
 DEBUG = os.getenv("UMLAGENTS_DEBUG", "false").lower() == "true"
 
-# Check DeepSeek API key
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY or DEEPSEEK_API_KEY == "your_deepseek_api_key_here":
-    print(f"⚠️  WARNING: DEEPSEEK_API_KEY not configured or still placeholder.")
-    print(f"   Current value: {DEEPSEEK_API_KEY[:8] if DEEPSEEK_API_KEY else 'None'}...")
-    print(f"   AI agents will fail. Update .env file at {env_path}")
+# Check Anthropic API key
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY or ANTHROPIC_API_KEY.startswith("your_"):
+    print(f"[WARNING] ANTHROPIC_API_KEY not configured.")
+    print(f"   AI agents will fail. Set ANTHROPIC_API_KEY env var or add .env file.")
 else:
-    print(f"✅ DEEPSEEK_API_KEY loaded: {DEEPSEEK_API_KEY[:8]}...")
+    print(f"[OK] ANTHROPIC_API_KEY loaded: {ANTHROPIC_API_KEY[:12]}...")
 
 # ============================================================================
 # FastAPI Application
@@ -101,11 +98,13 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 class WebSocketManager:
     """Manages WebSocket connections and broadcasting."""
-    
+
     def __init__(self):
         self.active_connections: List[WebSocket] = []
         self.pipeline_tasks: Dict[str, asyncio.Task] = {}
-        
+        self._ba_answer_queues: Dict[int, asyncio.Queue] = {}  # id(websocket) → Queue
+        self._loop: Optional[asyncio.AbstractEventLoop] = None  # captured on first connect
+
         # Subscribe to UMLAgents event bus for real‑time monitoring
         if UMLAGENTS_AVAILABLE:
             try:
@@ -116,6 +115,8 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket):
         """Accept a new WebSocket connection."""
+        if self._loop is None:
+            self._loop = asyncio.get_running_loop()
         await websocket.accept()
         self.active_connections.append(websocket)
         logging.info(f"WebSocket connected: {len(self.active_connections)} active")
@@ -139,22 +140,34 @@ class WebSocketManager:
     async def send_personal_message(self, message: Dict[str, Any], websocket: WebSocket):
         """Send a message to a specific WebSocket client."""
         await websocket.send_text(json.dumps(message))
-    
+
+    async def put_ba_answer(self, websocket: WebSocket, answer: str):
+        """Deliver a user answer to the waiting interactive-BA coroutine."""
+        q = self._ba_answer_queues.get(id(websocket))
+        if q is not None:
+            await q.put(answer)
+
     def _handle_event(self, event):
         """
         Handle events from UMLAgents event bus.
         Broadcasts event data to all connected WebSocket clients.
+        Safe to call from background threads.
         """
-        # Convert event to WebSocket message format
         message = {
             "type": "event",
             "event_type": event.type.value,
             "data": event.data,
             "timestamp": event.timestamp
         }
-        
-        # Schedule broadcast (can't await in sync callback)
-        asyncio.create_task(self.broadcast(message))
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            # Thread-safe scheduling from a background thread
+            asyncio.run_coroutine_threadsafe(self.broadcast(message), loop)
+        else:
+            try:
+                asyncio.create_task(self.broadcast(message))
+            except RuntimeError:
+                pass
 
 # Singleton WebSocket manager
 ws_manager = WebSocketManager()
@@ -197,6 +210,8 @@ async def handle_websocket_message(message: Dict[str, Any], websocket: WebSocket
         await handle_pipeline_start(message, websocket)
     elif msg_type == "ba_interactive":
         await handle_ba_interactive(message, websocket)
+    elif msg_type == "ba_answer":
+        await ws_manager.put_ba_answer(websocket, message.get("answer", ""))
     elif msg_type == "load_yaml":
         await handle_load_yaml(message, websocket)
     elif msg_type == "get_project_status":
@@ -399,9 +414,9 @@ async def run_pipeline_background(project_id: int, agents: List[str]):
             "timestamp": datetime.now().isoformat()
         })
         
-        # Run pipeline (this is synchronous, consider running in thread pool)
-        # For now, we'll simulate progress
-        result = orchestrator.run(context)
+        # Run pipeline in thread pool so the event loop stays free for WebSocket broadcasts
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, orchestrator.run, context)
         
         await ws_manager.broadcast({
             "type": "pipeline_completed",
@@ -427,35 +442,109 @@ async def run_pipeline_background(project_id: int, agents: List[str]):
         })
 
 async def run_ba_interactive_background(project_name: str, domain: str, websocket: WebSocket):
-    """Run interactive BA requirement elicitation."""
+    """Drive a Larman Inception Phase elicitation session over WebSocket."""
+    queue: asyncio.Queue = asyncio.Queue()
+    ws_manager._ba_answer_queues[id(websocket)] = queue
+
+    engine = init_db(DB_PATH)
+    session = get_session(engine)
+    ba_agent = BAAgent(db_session=session)
+
+    history: List[Dict[str, str]] = []
+
+    # Seed first answer if caller pre-supplied project_name / domain
+    if project_name or domain:
+        seed = []
+        if project_name:
+            seed.append(f"Project name: {project_name}")
+        if domain:
+            seed.append(f"Domain: {domain}")
+        history.append({
+            "question": "What is your project idea?",
+            "answer": " | ".join(seed),
+        })
+
     try:
-        # Interactive BA is not implemented in web UI
-        # Use CLI command: umlagents interactive
+        result = ba_agent.web_get_next_question(history)
+
+        while not result.get("done"):
+            await ws_manager.send_personal_message({
+                "type": "ba_question",
+                "question": result["question"],
+                "phase": result["phase"],
+                "phase_label": result["phase_label"],
+                "phase_number": result["phase_number"],
+                "total_phases": result["total_phases"],
+                "timestamp": datetime.now().isoformat(),
+            }, websocket)
+
+            await ws_manager.broadcast({
+                "type": "activity",
+                "message": (
+                    f"BA phase {result['phase_number']}/{result['total_phases']} "
+                    f"({result['phase_label']})"
+                ),
+                "level": "info",
+                "timestamp": datetime.now().isoformat(),
+            })
+
+            try:
+                answer: str = await asyncio.wait_for(queue.get(), timeout=600)
+            except asyncio.TimeoutError:
+                await ws_manager.send_personal_message({
+                    "type": "ba_error",
+                    "message": "Session timed out waiting for your answer.",
+                    "timestamp": datetime.now().isoformat(),
+                }, websocket)
+                return
+
+            if not answer.strip():
+                answer = "Not specified"
+
+            history.append({"question": result["question"], "answer": answer})
+            result = ba_agent.web_get_next_question(history)
+
+        # All 7 phases covered — synthesize YAML
         await ws_manager.send_personal_message({
-            "type": "ba_error",
-            "message": "Interactive BA is not available in web UI.\n\n" +
-                       "Please use the CLI for interactive requirement elicitation:\n" +
-                       "```\n" +
-                       "umlagents interactive\n" +
-                       "```\n\n" +
-                       "Or upload a YAML requirements file using the upload feature above.",
-            "timestamp": datetime.now().isoformat()
+            "type": "ba_synthesizing",
+            "message": "All phases complete. Synthesizing your requirements specification...",
+            "timestamp": datetime.now().isoformat(),
         }, websocket)
-        
-        # Also log to activity feed
+
+        yaml_data = ba_agent.web_synthesize_requirements(history)
+        project_id = ba_agent.web_save_requirements(yaml_data)
+        session.close()
+
+        final_project_name = yaml_data.get("project", {}).get("name", project_name or "Untitled")
+
+        await ws_manager.send_personal_message({
+            "type": "ba_completed",
+            "project_name": final_project_name,
+            "project_id": project_id,
+            "message": (
+                f"Requirements captured! Project '{final_project_name}' "
+                f"created (ID {project_id})."
+            ),
+            "summary": result.get("summary", ""),
+            "timestamp": datetime.now().isoformat(),
+        }, websocket)
+
         await ws_manager.broadcast({
             "type": "activity",
-            "message": f"Interactive BA requested for '{project_name}' - use CLI instead",
-            "level": "warning",
-            "timestamp": datetime.now().isoformat()
+            "message": f"BA completed: '{final_project_name}' (ID {project_id})",
+            "level": "success",
+            "timestamp": datetime.now().isoformat(),
         })
-        
+
     except Exception as e:
+        logging.exception("run_ba_interactive_background failed")
         await ws_manager.send_personal_message({
             "type": "ba_error",
             "message": f"Interactive BA failed: {str(e)}",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }, websocket)
+    finally:
+        ws_manager._ba_answer_queues.pop(id(websocket), None)
 
 async def run_load_yaml_background(yaml_path: str, websocket: WebSocket):
     """Load YAML file into database with WebSocket progress updates."""
@@ -504,8 +593,9 @@ async def run_load_yaml_background(yaml_path: str, websocket: WebSocket):
         result = ba_agent.run(context)
         
         project_id = result.get("project_id")
-        actor_count = len(result.get("actors", []))
-        use_case_count = len(result.get("use_cases", []))
+        yaml_loaded = result.get("requirements_yaml", {})
+        actor_count = len(yaml_loaded.get("actors", []))
+        use_case_count = len(yaml_loaded.get("use_cases", []))
         
         session.close()
         
@@ -668,10 +758,21 @@ async def get_artifact_content(artifact_id: int):
         if not artifact:
             raise HTTPException(status_code=404, detail=f"Artifact {artifact_id} not found")
         
-        if not artifact.file_path or not Path(artifact.file_path).exists():
-            raise HTTPException(status_code=404, detail=f"Artifact file not found: {artifact.file_path}")
-        
-        content = Path(artifact.file_path).read_text(encoding='utf-8', errors='ignore')
+        if not artifact.file_path:
+            raise HTTPException(status_code=404, detail="Artifact has no file path")
+
+        # Resolve relative paths from the project root (parent of web/)
+        artifact_path = Path(artifact.file_path)
+        if not artifact_path.is_absolute():
+            artifact_path = (Path(__file__).parent.parent / artifact_path).resolve()
+
+        if not artifact_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Artifact file not on disk: {artifact.file_path} — re-run the pipeline to regenerate it"
+            )
+
+        content = artifact_path.read_text(encoding='utf-8', errors='ignore')
         
         result = {
             "id": artifact.id,
@@ -688,43 +789,92 @@ async def get_artifact_content(artifact_id: int):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/reset-code/{project_id}")
+async def reset_code_artifacts(project_id: int):
+    """Delete only source-code, test, and deployment artifacts for a project.
+    Keeps requirements, diagrams, and design decisions intact."""
+    try:
+        from umlagents.db.models import ArtifactType
+        engine = init_db(DB_PATH)
+        session = get_session(engine)
+
+        removable_types = {
+            ArtifactType.SOURCE_CODE,
+            ArtifactType.UNIT_TESTS,
+            ArtifactType.UAT_CHECKLIST,
+            ArtifactType.DOCKERFILE,
+            ArtifactType.DEPLOYMENT_CONFIG,
+        }
+
+        artifacts = session.query(Artifact).filter(
+            Artifact.project_id == project_id,
+            Artifact.artifact_type.in_(removable_types)
+        ).all()
+
+        deleted_files, deleted_db = 0, 0
+        for art in artifacts:
+            if art.file_path:
+                p = Path(art.file_path)
+                if not p.is_absolute():
+                    p = (Path(__file__).parent.parent / p).resolve()
+                if p.exists():
+                    p.unlink()
+                    deleted_files += 1
+            session.delete(art)
+            deleted_db += 1
+
+        session.commit()
+        session.close()
+
+        await ws_manager.broadcast({
+            "type": "activity",
+            "message": f"Reset code artifacts: {deleted_db} records removed",
+            "level": "success",
+            "timestamp": datetime.now().isoformat(),
+        })
+
+        return {
+            "success": True,
+            "deleted_artifacts": deleted_db,
+            "deleted_files": deleted_files,
+            "message": f"Removed {deleted_db} code/test/deployment artifacts. Requirements and diagrams preserved."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/api/reset")
 async def reset_database():
-    """Reset the database and delete all generated artifacts."""
+    """Drop and recreate all database tables, then delete generated files."""
     try:
-        # Delete database file
-        db_path = Path(DB_PATH)
-        if db_path.exists():
-            db_path.unlink()
-            print(f"Deleted database file: {db_path}")
-        
-        # Delete output directory
+        # Drop all tables and recreate them — works even when the SQLite file
+        # is held open by another connection (avoids Windows file-lock errors).
+        engine = init_db(DB_PATH)
+        Base.metadata.drop_all(engine)
+        Base.metadata.create_all(engine)
+        print("Database tables dropped and recreated")
+
+        # Delete generated output files
         output_dir = project_root / "output"
         if output_dir.exists():
             shutil.rmtree(output_dir)
             print(f"Deleted output directory: {output_dir}")
-        
-        # Delete uploads directory
+
+        # Delete uploaded YAML files
         uploads_dir = Path(__file__).parent / "uploads"
         if uploads_dir.exists():
             shutil.rmtree(uploads_dir)
             print(f"Deleted uploads directory: {uploads_dir}")
-        
-        # Reinitialize database
-        engine = init_db(DB_PATH)
-        session = get_session(engine)
-        session.close()
-        
-        # Broadcast reset event via WebSocket
+
         await ws_manager.broadcast({
             "type": "reset_completed",
             "timestamp": datetime.now().isoformat(),
-            "message": "Database and artifacts reset successfully"
+            "message": "All projects and generated files have been removed"
         })
-        
+
         return {
             "success": True,
-            "message": "Database and artifacts reset successfully",
+            "message": "All projects and generated files have been removed",
             "timestamp": datetime.now().isoformat()
         }
     except Exception as e:
@@ -786,6 +936,28 @@ async def test_api_key():
         "base_url": base_url,
         "timestamp": datetime.now().isoformat()
     }
+
+@app.post("/api/render-puml")
+async def render_puml(request: Request):
+    """Proxy PlantUML content to kroki.io and return SVG."""
+    import httpx
+    body = await request.json()
+    puml_content = body.get("content", "")
+    if not puml_content.strip():
+        raise HTTPException(status_code=400, detail="No content provided")
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://kroki.io/plantuml/svg",
+                content=puml_content.encode("utf-8"),
+                headers={"Content-Type": "text/plain"},
+            )
+            resp.raise_for_status()
+        from fastapi.responses import Response
+        return Response(content=resp.content, media_type="image/svg+xml")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Render failed: {e}")
+
 
 @app.get("/api/health")
 async def health_check():
