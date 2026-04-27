@@ -363,10 +363,13 @@ function schemaProperties(schema, components) {
   }));
 }
 
-function isDateField(name, format) {
+function dateKind(name, format) {
+  if (format === 'date-time') return 'datetime';
+  if (format === 'date') return 'date';
   const n = name.toLowerCase();
-  return format === 'date-time' || format === 'date' ||
-    /_at$|_date$|^date_|^start|^end|^from|^to/.test(n);
+  if (/_at$|_time$|^start|^end|^from|^to/.test(n)) return 'datetime';
+  if (/_date$|^date_/.test(n)) return 'date';
+  return null;
 }
 
 function inputHtml(name, type, format, description, enumVals, required, id) {
@@ -383,9 +386,9 @@ function inputHtml(name, type, format, description, enumVals, required, id) {
   if (type === 'integer' || type === 'number') {
     return `<input type="number" class="form-control" id="${id}" name="${name}" placeholder="${ph}" ${req}/>`;
   }
-  if (isDateField(name, format)) {
-    return `<input type="date" class="form-control" id="${id}" name="${name}" ${req}/>`;
-  }
+  const dk = dateKind(name, format);
+  if (dk === 'datetime') return `<input type="datetime-local" class="form-control" id="${id}" name="${name}" data-kind="datetime" ${req}/>`;
+  if (dk === 'date')     return `<input type="date"           class="form-control" id="${id}" name="${name}" data-kind="date"     ${req}/>`;
   return `<input type="text" class="form-control" id="${id}" name="${name}" placeholder="${ph}" ${req}/>`;
 }
 
@@ -408,6 +411,10 @@ function collectFormData(formId) {
     if (v === 'true') data[k] = true;
     else if (v === 'false') data[k] = false;
     else if (el && el.type === 'number') data[k] = +v;
+    else if (el && el.dataset.kind === 'datetime') {
+      // browser datetime-local gives "2024-01-15T10:30" — add seconds for ISO 8601
+      data[k] = v.length === 16 ? v + ':00' : v;
+    }
     else data[k] = v;
   });
   return data;
@@ -684,7 +691,9 @@ function wireCard(method, path, op) {
       const qInputs = [...document.querySelectorAll(`[id^="${fid}_q_"]`)];
       const qs = qInputs.filter(e => e.value).map(e => {
         const key = e.id.replace(fid + '_q_', '');
-        return `${key}=${encodeURIComponent(e.value)}`;
+        let val = e.value;
+        if (e.dataset.kind === 'datetime' && val.length === 16) val += ':00';
+        return `${key}=${encodeURIComponent(val)}`;
       }).join('&');
       if (qs) url += '?' + qs;
       const { ok, data } = await apiFetch(url);
