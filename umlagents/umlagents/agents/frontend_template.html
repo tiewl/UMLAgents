@@ -168,6 +168,37 @@ body { margin: 0; font-family: var(--font); background: #f0f2f5; color: #1a1d23;
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 3px; }
+
+/* ── Slot Picker ── */
+.sp-widget {
+  background: #f8fafc; border: 1.5px solid #e5e9f0;
+  border-radius: 12px; padding: 16px; margin-top: 4px;
+}
+.sp-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.sp-toolbar label { font-size: .78rem; font-weight: 600; color: #374151; white-space: nowrap; margin: 0; }
+.sp-doctor { flex: 1; min-width: 160px; }
+.sp-week-nav { display: flex; align-items: center; gap: 6px; }
+.sp-week-label { font-size: .78rem; font-weight: 600; color: #374151; white-space: nowrap; min-width: 180px; text-align: center; }
+.sp-day-col { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.sp-day-header {
+  text-align: center; font-size: .68rem; font-weight: 700; color: #6b7280;
+  text-transform: uppercase; letter-spacing: .04em; padding: 5px 2px;
+  background: #f0f2f5; border-radius: 6px; margin-bottom: 2px; line-height: 1.4;
+}
+.sp-today .sp-day-header { background: var(--sidebar-bg); color: #fff; }
+.sp-slot-btn {
+  width: 100%; border: 1.5px solid #bbf7d0; background: #f0fdf4; color: #166534;
+  border-radius: 6px; font-size: .7rem; font-weight: 600; padding: 5px 2px;
+  cursor: pointer; transition: all .15s; text-align: center; line-height: 1.2;
+}
+.sp-slot-btn:hover { background: #dcfce7; border-color: #86efac; transform: translateY(-1px); }
+.sp-slot-btn.selected { background: var(--sidebar-bg); border-color: var(--sidebar-bg); color: #fff; }
+.sp-no-slots { text-align: center; color: #d1d5db; font-size: .72rem; padding: 8px 0; }
+.sp-selected {
+  margin-top: 12px; padding: 10px 14px; background: #eff6ff; border: 1.5px solid #bfdbfe;
+  border-radius: 8px; font-size: .8rem; font-weight: 500; color: #1d4ed8;
+  display: flex; align-items: center; gap: 8px;
+}
 </style>
 </head>
 <body>
@@ -365,6 +396,132 @@ function pathInputsHtml(path, formId) {
     </div>`).join('');
 }
 
+// ── Slot Picker ───────────────────────────────────────────────────────────────
+
+const SP_DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+function spGetMonday(d) {
+  const date = new Date(d); date.setHours(0,0,0,0);
+  const day = date.getDay();
+  date.setDate(date.getDate() - day + (day === 0 ? -6 : 1));
+  return date;
+}
+function spAddDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r; }
+function spFmtDate(d) { return d.toLocaleDateString('en-US', {month:'short', day:'numeric'}); }
+function spFmtTime(iso) {
+  return new Date(iso).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12:true});
+}
+function spWeekRange(mon) { return `${spFmtDate(mon)} — ${spFmtDate(spAddDays(mon,6))}`; }
+
+function slotPickerHtml(cardId) {
+  return `<div class="col-12 mb-3">
+    <label class="form-label">Time Slot <span class="required-star">*</span></label>
+    <div class="sp-widget" id="sp_${cardId}">
+      <div class="sp-toolbar">
+        <label>Doctor:</label>
+        <select class="form-select form-select-sm sp-doctor"><option value="">— select doctor —</option></select>
+        <div class="sp-week-nav">
+          <button type="button" class="btn btn-outline-secondary btn-sm btn-icon sp-prev"><i class="bi bi-chevron-left"></i></button>
+          <span class="sp-week-label">Loading…</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm btn-icon sp-next"><i class="bi bi-chevron-right"></i></button>
+        </div>
+      </div>
+      <div class="sp-grid"><div class="text-center text-muted small py-3 fst-italic"><i class="bi bi-calendar3 me-2"></i>Select a doctor to see available slots.</div></div>
+      <div class="sp-selected d-none"><i class="bi bi-check-circle-fill"></i><span class="sp-sel-text"></span></div>
+      <input type="number" name="time_slot_id" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;" class="sp-input" required/>
+    </div>
+  </div>`;
+}
+
+async function spLoadSlots(widget, weekStart) {
+  const doctorSelect = widget.querySelector('.sp-doctor');
+  const grid = widget.querySelector('.sp-grid');
+  const doctorId = doctorSelect.value;
+  if (!doctorId) {
+    grid.innerHTML = '<div class="text-center text-muted small py-3 fst-italic"><i class="bi bi-calendar3 me-2"></i>Select a doctor to see available slots.</div>';
+    return;
+  }
+  grid.innerHTML = '<div class="text-center py-3"><span class="spinner-border spinner-border-sm text-primary me-2"></span>Loading slots…</div>';
+  const weekEnd = spAddDays(weekStart, 7);
+  const { ok, data } = await apiFetch(
+    `/time-slots?doctor_id=${doctorId}&from_time=${encodeURIComponent(weekStart.toISOString())}&to_time=${encodeURIComponent(weekEnd.toISOString())}`
+  );
+  if (!ok || !Array.isArray(data) || data.length === 0) {
+    grid.innerHTML = '<div class="text-center text-muted small py-3 fst-italic"><i class="bi bi-calendar-x me-2"></i>No available slots this week. Try another week or doctor.</div>';
+    return;
+  }
+  const byDay = {};
+  data.forEach(s => {
+    const dow = (new Date(s.start_time).getDay() + 6) % 7;
+    (byDay[dow] = byDay[dow] || []).push(s);
+  });
+  const today = new Date().toDateString();
+  let html = '<div class="row g-2">';
+  for (let i = 0; i < 7; i++) {
+    const dayDate = spAddDays(weekStart, i);
+    const isToday = dayDate.toDateString() === today;
+    const slots = byDay[i] || [];
+    html += `<div class="col sp-day-col ${isToday ? 'sp-today' : ''}">
+      <div class="sp-day-header">${SP_DAYS[i]}<br/><small>${spFmtDate(dayDate)}</small></div>`;
+    if (!slots.length) {
+      html += '<div class="sp-no-slots">—</div>';
+    } else {
+      slots.forEach(s => {
+        html += `<button type="button" class="sp-slot-btn"
+          data-id="${s.id}" data-start="${s.start_time}" data-end="${s.end_time}">
+          ${spFmtTime(s.start_time)}</button>`;
+      });
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.sp-slot-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      grid.querySelectorAll('.sp-slot-btn').forEach(b => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      widget.querySelector('.sp-input').value = btn.dataset.id;
+      const drName = doctorSelect.options[doctorSelect.selectedIndex]?.text || '';
+      const sel = widget.querySelector('.sp-selected');
+      sel.classList.remove('d-none');
+      sel.querySelector('.sp-sel-text').textContent =
+        `${drName} · ${spFmtDate(new Date(btn.dataset.start))} · ${spFmtTime(btn.dataset.start)} – ${spFmtTime(btn.dataset.end)} (Slot #${btn.dataset.id})`;
+    });
+  });
+}
+
+async function initSlotPicker(widgetId) {
+  const widget = document.getElementById(widgetId);
+  if (!widget) return;
+  const { data: doctors } = await apiFetch('/doctors');
+  const sel = widget.querySelector('.sp-doctor');
+  if (Array.isArray(doctors)) {
+    doctors.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      const nm = [d.first_name, d.last_name].filter(Boolean).join(' ');
+      const sp = d.specialty || d.specialization || d.department || '';
+      opt.textContent = `Dr. ${nm}${sp ? ' — ' + sp : ''}`;
+      sel.appendChild(opt);
+    });
+  }
+  let weekStart = spGetMonday(new Date());
+  const lbl = widget.querySelector('.sp-week-label');
+  lbl.textContent = spWeekRange(weekStart);
+  sel.addEventListener('change', () => spLoadSlots(widget, weekStart));
+  widget.querySelector('.sp-prev').addEventListener('click', () => {
+    weekStart = spAddDays(weekStart, -7);
+    lbl.textContent = spWeekRange(weekStart);
+    spLoadSlots(widget, weekStart);
+  });
+  widget.querySelector('.sp-next').addEventListener('click', () => {
+    weekStart = spAddDays(weekStart, 7);
+    lbl.textContent = spWeekRange(weekStart);
+    spLoadSlots(widget, weekStart);
+  });
+}
+
 // ── Card builders ─────────────────────────────────────────────────────────────
 
 function cid(method, path) { return (method + path).replace(/[^a-zA-Z0-9]/g, '_'); }
@@ -373,6 +530,11 @@ function buildPostCard(method, path, op, components) {
   const id = cid(method, path);
   const fid = 'form_' + id;
   const props = schemaProperties(op.requestBody?.content?.['application/json']?.schema, components);
+  const hasSlotPicker = props.some(p => p.name === 'time_slot_id');
+  const fieldsHtml = props.map(p => {
+    if (p.name === 'time_slot_id' && hasSlotPicker) return slotPickerHtml(id);
+    return fieldHtml(p, fid + '_' + p.name);
+  }).join('');
   return `<div class="ep-card">
   <div class="ep-card-header">
     <span class="method method-${method}">${method}</span>
@@ -383,7 +545,7 @@ function buildPostCard(method, path, op, components) {
     <div id="alert_${id}"></div>
     <form id="${fid}" class="row">
       ${pathInputsHtml(path, fid)}
-      ${props.map(p => fieldHtml(p, fid + '_' + p.name)).join('')}
+      ${fieldsHtml}
       <div class="col-12 mt-1 d-flex gap-2">
         <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-send-fill me-2"></i>Submit</button>
         <button type="reset" class="btn btn-outline-secondary btn-sm">Reset</button>
@@ -518,8 +680,20 @@ function wireCard(method, path, op) {
       showResp(id, data);
       showAlert(id, ok, ok ? 'Record created successfully.' : (data.detail ? JSON.stringify(data.detail) : 'Request failed.'));
       toast(ok ? 'Success!' : (data.detail || 'Request failed'), ok);
-      if (ok) form.reset();
+      if (ok) {
+        form.reset();
+        const spWidget = document.getElementById('sp_' + id);
+        if (spWidget) {
+          spWidget.querySelector('.sp-grid').innerHTML =
+            '<div class="text-center text-muted small py-3 fst-italic"><i class="bi bi-calendar3 me-2"></i>Select a doctor to see available slots.</div>';
+          spWidget.querySelector('.sp-selected').classList.add('d-none');
+        }
+      }
     });
+    // Initialize slot picker if this form has one
+    if (document.getElementById('sp_' + id)) {
+      initSlotPicker('sp_' + id);
+    }
   }
 }
 
