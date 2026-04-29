@@ -169,6 +169,29 @@ body { margin: 0; font-family: var(--font); background: #f0f2f5; color: #1a1d23;
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,.15); border-radius: 3px; }
 
+/* ── Workflow guide ── */
+.wf-steps { display: flex; flex-direction: column; gap: 12px; }
+.wf-step {
+  display: flex; gap: 16px; align-items: flex-start;
+  padding: 16px 20px; background: #fff; border-radius: 12px;
+  border: 1px solid #e5e9f0; transition: box-shadow .2s;
+}
+.wf-step:hover { box-shadow: 0 4px 12px rgba(0,0,0,.08); }
+.wf-num {
+  width: 32px; height: 32px; border-radius: 50%; background: var(--sidebar-bg);
+  color: #fff; font-size: .82rem; font-weight: 700; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.wf-title { font-size: .95rem; font-weight: 700; color: #1a1d23; margin-bottom: 4px; }
+.wf-desc  { font-size: .8rem; color: #6b7280; margin-bottom: 8px; }
+.wf-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.wf-badge  { font-size: .67rem; font-weight: 600; padding: 2px 7px; border-radius: 20px; }
+.wf-badge-post   { background: #dbeafe; color: #1d4ed8; }
+.wf-badge-get    { background: #dcfce7; color: #15803d; }
+.wf-badge-delete { background: #fee2e2; color: #b91c1c; }
+.wf-badge-put    { background: #ffedd5; color: #c2410c; }
+.wf-badge-patch  { background: #f3e8ff; color: #7e22ce; }
+
 /* ── Slot Picker ── */
 .sp-widget {
   background: #f8fafc; border: 1.5px solid #e5e9f0;
@@ -304,22 +327,60 @@ function renderTable(tbodyId, rows) {
   ).join('');
 }
 
-// ── FK field helpers ──────────────────────────────────────────────────────────
+// ── FK field helpers + recent records cache ───────────────────────────────────
 
 const FK_FIELDS = {
-  doctor_id:  { endpoint: '/doctors',  label: d => `Dr. ${[d.first_name,d.last_name].filter(Boolean).join(' ')}${d.specialty?' — '+d.specialty:''}` },
-  patient_id: { endpoint: '/patients', label: p => `${[p.first_name,p.last_name].filter(Boolean).join(' ')}` },
+  doctor_id:     { endpoint: '/doctors',  label: d => `Dr. ${[d.first_name,d.last_name].filter(Boolean).join(' ')}${d.specialty?' — '+d.specialty:''}` },
+  patient_id:    { endpoint: '/patients', label: p => `${[p.first_name,p.last_name].filter(Boolean).join(' ')}` },
+  appointment_id:{ recent: '/appointments', label: a => `Appt #${a.id} — ${a.appointment_type||''} (${a.status||''})` },
+  invoice_id:    { recent: '/invoices',     label: i => `Invoice #${i.id}${i.total_amount?' — $'+i.total_amount:''}` },
 };
+
+const _recent = {};
+
+function cacheRecent(basePath, record) {
+  if (!record?.id) return;
+  (_recent[basePath] = _recent[basePath] || []).unshift(record);
+  _recent[basePath] = [...new Map(_recent[basePath].map(r=>[r.id,r])).values()].slice(0,20);
+  document.querySelectorAll(`[data-fk-recent="${basePath}"]`).forEach(populateRecentSelect);
+}
+
+function populateRecentSelect(el) {
+  const basePath = el.dataset.fkRecent;
+  const records = _recent[basePath] || [];
+  const fkKey = el.dataset.fk;
+  const cfg = fkKey && FK_FIELDS[fkKey];
+  const prev = el.value;
+  el.innerHTML = records.length
+    ? '<option value="">— select —</option>'
+    : '<option value="">— none yet; create one first —</option>';
+  records.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.id;
+    opt.textContent = cfg ? cfg.label(r) : `#${r.id}`;
+    el.appendChild(opt);
+  });
+  if (prev) el.value = prev;
+}
 
 function fkSelectHtml(name, id, required) {
   const req = required ? 'required' : '';
-  return `<select class="form-select fk-select" id="${id}" name="${name}" data-fk="${name}" ${req}>
-    <option value="">Loading…</option></select>`;
+  const cfg = FK_FIELDS[name];
+  if (cfg?.recent)
+    return `<select class="form-select fk-select" id="${id}" name="${name}" data-fk="${name}" data-fk-recent="${cfg.recent}" ${req}><option value="">— none yet; create one first —</option></select>`;
+  return `<select class="form-select fk-select" id="${id}" name="${name}" data-fk="${name}" ${req}><option value="">Loading…</option></select>`;
+}
+
+function fkPathSelectHtml(paramName, id) {
+  const cfg = FK_FIELDS[paramName];
+  if (cfg?.recent)
+    return `<select class="form-select fk-select" id="${id}" name="__path_${paramName}" data-fk="${paramName}" data-fk-recent="${cfg.recent}" required><option value="">— none yet; create one first —</option></select>`;
+  return `<select class="form-select fk-select" id="${id}" name="__path_${paramName}" data-fk="${paramName}" required><option value="">Loading…</option></select>`;
 }
 
 async function populateFkSelect(el) {
   const cfg = FK_FIELDS[el.dataset.fk];
-  if (!cfg) return;
+  if (!cfg?.endpoint) return;
   const prev = el.value;
   const { ok, data } = await apiFetch(cfg.endpoint);
   el.innerHTML = '<option value="">— select —</option>';
@@ -336,9 +397,11 @@ async function populateFkSelect(el) {
 
 async function refreshFkSelects(postedPath) {
   const base = postedPath.replace(/\{[^}]+\}/g, '').replace(/\/+$/, '');
-  const cfg = Object.entries(FK_FIELDS).find(([, v]) => v.endpoint === base);
-  if (!cfg) return;
-  document.querySelectorAll(`[data-fk="${cfg[0]}"]`).forEach(el => populateFkSelect(el));
+  const entry = Object.entries(FK_FIELDS).find(([,v]) => v.endpoint === base);
+  if (!entry) return;
+  document.querySelectorAll(`[data-fk="${entry[0]}"]`).forEach(el => {
+    if (!el.dataset.fkRecent) populateFkSelect(el);
+  });
 }
 
 // ── Schema ────────────────────────────────────────────────────────────────────
@@ -434,11 +497,16 @@ function buildUrl(path, formId) {
 }
 
 function pathInputsHtml(path, formId) {
-  return pathParams(path).map(p => `
-    <div class="col-md-4 mb-3">
-      <label class="form-label">${p.replace(/_/g,' ')} <span class="required-star">*</span></label>
-      <input type="text" class="form-control" id="${formId}_path_${p}" name="__path_${p}" placeholder="${p}" required/>
-    </div>`).join('');
+  return pathParams(path).map(p => {
+    const label = p.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+    const inp = FK_FIELDS[p]
+      ? fkPathSelectHtml(p, formId + '_path_' + p)
+      : `<input type="text" class="form-control" id="${formId}_path_${p}" name="__path_${p}" placeholder="${p}" required/>`;
+    return `<div class="col-md-4 mb-3">
+      <label class="form-label">${label} <span class="required-star">*</span></label>
+      ${inp}
+    </div>`;
+  }).join('');
 }
 
 // ── Slot Picker ───────────────────────────────────────────────────────────────
@@ -584,6 +652,8 @@ function buildPostCard(method, path, op, components) {
   const hasSlotPicker = props.some(p => p.name === 'time_slot_id');
   const fieldsHtml = props.map(p => {
     if (p.name === 'time_slot_id' && hasSlotPicker) return slotPickerHtml(id);
+    if (p.name === 'doctor_id'    && hasSlotPicker)
+      return `<div style="display:none">${fkSelectHtml(p.name, fid+'_'+p.name, false)}</div>`;
     return fieldHtml(p, fid + '_' + p.name);
   }).join('');
   return `<div class="ep-card">
@@ -651,9 +721,10 @@ function buildGetCard(method, path, op, components) {
 </div>`;
 }
 
-function buildDeleteCard(method, path, op) {
+function buildDeleteCard(method, path, op, components) {
   const id = cid(method, path);
   const fid = 'form_' + id;
+  const props = schemaProperties(op.requestBody?.content?.['application/json']?.schema, components);
   return `<div class="ep-card">
   <div class="ep-card-header">
     <span class="method method-delete">delete</span>
@@ -664,6 +735,7 @@ function buildDeleteCard(method, path, op) {
     <div id="alert_${id}"></div>
     <form id="${fid}" class="row">
       ${pathInputsHtml(path, fid)}
+      ${props.map(p => fieldHtml(p, fid + '_' + p.name)).join('')}
       <div class="col-12 mt-1">
         <button type="submit" class="btn btn-danger btn-sm"><i class="bi bi-trash3-fill me-2"></i>Delete</button>
       </div>
@@ -712,10 +784,16 @@ function wireCard(method, path, op) {
     form.addEventListener('submit', async e => {
       e.preventDefault();
       const url = buildUrl(path, fid);
-      const { ok, data } = await apiFetch(url, { method: 'DELETE' });
+      const body = collectFormData(fid);
+      const hasBody = Object.keys(body).length > 0;
+      const { ok, data } = await apiFetch(url, {
+        method: 'DELETE',
+        ...(hasBody ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}),
+      });
       showResp(id, data);
-      showAlert(id, ok, ok ? 'Deleted successfully.' : (data.detail || 'Delete failed.'));
-      toast(ok ? 'Deleted' : (data.detail || 'Delete failed'), ok);
+      showAlert(id, ok, ok ? 'Cancelled successfully.' : (data.detail || 'Delete failed.'));
+      toast(ok ? 'Done' : (data.detail || 'Failed'), ok);
+      if (ok) form.reset();
     });
 
   } else {
@@ -735,7 +813,9 @@ function wireCard(method, path, op) {
       toast(ok ? 'Success!' : (data.detail || 'Request failed'), ok);
       if (ok) {
         form.reset();
+        const basePath = path.replace(/\{[^}]+\}/g,'').replace(/\/+$/,'');
         refreshFkSelects(path);
+        cacheRecent(basePath, data);
         const spWidget = document.getElementById('sp_' + id);
         if (spWidget) {
           spWidget.querySelector('.sp-grid').innerHTML =
@@ -801,15 +881,46 @@ async function init() {
     }
   }
 
-  let firstPanel = null;
   const tags = Object.keys(groups);
+
+  // ── Workflow guide panel (first item) ──
+  const wfSteps = tags.map((tag, i) => {
+    const eps = groups[tag];
+    const panelId = tag.replace(/[^a-zA-Z0-9]/g,'_');
+    const badges = eps.map(e =>
+      `<span class="wf-badge wf-badge-${e.method}">${e.method.toUpperCase()} — ${e.op.summary||e.path}</span>`
+    ).join('');
+    return `<div class="wf-step">
+      <div class="wf-num">${i+1}</div>
+      <div>
+        <div class="wf-title">${tag}</div>
+        <div class="wf-badges">${badges}</div>
+        <a href="#" class="btn btn-sm btn-outline-primary" onclick="showPanel('${panelId}');return false;">
+          <i class="bi bi-arrow-right-circle me-1"></i>Open</a>
+      </div>
+    </div>`;
+  }).join('');
+
+  nav.insertAdjacentHTML('beforeend', `<div class="sidebar-section">Overview</div>`);
+  nav.insertAdjacentHTML('beforeend', `
+    <a class="sidebar-item" data-panel="__workflow__"
+       href="#" onclick="showPanel('__workflow__');return false;">
+      <i class="bi bi-signpost-split"></i><span>Workflow Guide</span>
+    </a>`);
+  panels.insertAdjacentHTML('beforeend', `
+    <div class="panel" id="panel___workflow__">
+      <div class="panel-header">
+        <h4><i class="bi bi-signpost-split me-2"></i>Workflow Guide</h4>
+        <p>Recommended order of operations — follow the steps in sequence</p>
+      </div>
+      <div class="wf-steps">${wfSteps}</div>
+    </div>`);
 
   nav.insertAdjacentHTML('beforeend', `<div class="sidebar-section">Endpoints</div>`);
 
   for (const tag of tags) {
     const endpoints = groups[tag];
     const panelId = tag.replace(/[^a-zA-Z0-9]/g, '_');
-    if (!firstPanel) firstPanel = panelId;
 
     nav.insertAdjacentHTML('beforeend', `
       <a class="sidebar-item" data-panel="${panelId}"
@@ -822,7 +933,7 @@ async function init() {
     let cards = '';
     for (const { method, path, op } of endpoints) {
       if (method === 'get') cards += buildGetCard(method, path, op, components);
-      else if (method === 'delete') cards += buildDeleteCard(method, path, op);
+      else if (method === 'delete') cards += buildDeleteCard(method, path, op, components);
       else cards += buildPostCard(method, path, op, components);
     }
 
@@ -840,10 +951,12 @@ async function init() {
     }
   }
 
-  if (firstPanel) showPanel(firstPanel);
+  showPanel('__workflow__');
 
-  // Populate all FK dropdowns now that the DOM is fully built
-  document.querySelectorAll('.fk-select').forEach(el => populateFkSelect(el));
+  // Populate endpoint-backed FK dropdowns (recent-backed ones start empty)
+  document.querySelectorAll('.fk-select[data-fk]').forEach(el => {
+    if (!el.dataset.fkRecent) populateFkSelect(el);
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
