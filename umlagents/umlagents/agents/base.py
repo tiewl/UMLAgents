@@ -1,6 +1,11 @@
 """
-Enhanced base agent with SQLite audit logging and Anthropic API integration.
+Enhanced base agent with SQLite audit logging and pluggable LLM backend.
 Compatible with dice-game-agents pattern but adds Larman methodology alignment.
+
+LLM Backend:
+  The LLM provider is selected via UMLAGENTS_LLM_PROVIDER env var.
+  Supported: "anthropic" (default), "deepseek", "openai"
+  See umlagents.llm.backend for full details.
 """
 import os
 import hashlib
@@ -21,12 +26,19 @@ from ..db.models import (
     Artifact, AuditLog, AgentRole, ArtifactType, init_db, get_session
 )
 
+from ..llm.backend import (
+    LLMBackend,
+    LLMBackendFactory,
+    InsufficientCreditsError,
+)
+
 
 class BaseAgent:
     """
-    Base agent with DeepSeek API integration and SQLite audit logging.
+    Base agent with pluggable LLM backend and SQLite audit logging.
     
     Extends the dice-game-agents pattern with:
+    - Pluggable LLM backends (Anthropic, DeepSeek, OpenAI-compatible)
     - SQLite audit trail for regulatory compliance
     - Pattern application tracking (GRASP/GoF)
     - Larman methodology alignment
@@ -39,22 +51,24 @@ class BaseAgent:
         system_prompt: str,
         agent_role: AgentRole,
         db_session: Optional[Session] = None,
-        project_id: Optional[int] = None
+        project_id: Optional[int] = None,
+        llm_backend: Optional[LLMBackend] = None,
     ):
         self.name = name
         self.system_prompt = system_prompt
         self.agent_role = agent_role
         self.project_id = project_id
         
-        # Anthropic API configuration
-        self.api_key = os.getenv("ANTHROPIC_API_KEY")
-        # Allow per-agent model override via env, e.g. UMLAGENTS_TESTERAGENT_MODEL=claude-haiku-4-5-20251001
+        # Allow per-agent model override via env, e.g. UMLAGENTS_TESTERAGENT_MODEL=claude-haiku
         env_key = f"UMLAGENTS_{name.upper()}_MODEL"
         self._model = os.getenv(env_key) or os.getenv("UMLAGENTS_DEFAULT_MODEL", "claude-sonnet-4-6")
 
-        if not self.api_key or self.api_key.startswith("your_"):
-            print(f"[WARNING] ANTHROPIC_API_KEY not set. AI features will be disabled.")
-            self.api_key = None
+        # LLM backend — injected or created from factory
+        if llm_backend is not None:
+            self._llm_backend = llm_backend
+        else:
+            provider = os.getenv("UMLAGENTS_LLM_PROVIDER", "anthropic")
+            self._llm_backend = LLMBackendFactory.create(provider=provider, model=self._model)
         
         # Database session
         if db_session:
@@ -72,11 +86,12 @@ class BaseAgent:
         max_tokens: int = 4096,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
-        """Call Anthropic Claude API (drop-in replacement for the DeepSeek caller)."""
-        import anthropic
-
-        if not self.api_key:
-            raise ValueError("ANTHROPIC_API_KEY not configured. Cannot call AI API.")
+        """
+        Call the configured LLM backend.
+        
+        Despite the name, this now routes through whichever backend is configured
+        (Anthropic, DeepSeek, OpenAI-compatible, etc.) via UMLAGENTS_LLM_PROVIDER.
+        """
 
         self._log_activity(
             activity="api_call_start",
@@ -88,19 +103,16 @@ class BaseAgent:
             },
         )
 
-        print(f"[{self.name}] Calling Anthropic {self._model} ...")
+        print(f"[{self.name}] Calling LLM backend ({self._llm_backend.__class__.__name__}, model={self._model}) ...")
 
         try:
             start_time = datetime.now()
-            client = anthropic.Anthropic(api_key=self.api_key, timeout=180.0)
-            message = client.messages.create(
-                model=self._model,
-                max_tokens=max_tokens,
-                system=self.system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
+            content = self._llm_backend.chat_complete(
+                system_prompt=self.system_prompt,
+                user_prompt=user_prompt,
                 temperature=temperature,
+                max_tokens=max_tokens,
             )
-            content = message.content[0].text
             elapsed_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
             print(f"[{self.name}] Response received ({len(content)} chars, {elapsed_ms}ms)")
@@ -111,10 +123,7 @@ class BaseAgent:
                     "response_length": len(content),
                     "elapsed_ms": elapsed_ms,
                     "model": self._model,
-                    "usage": {
-                        "input_tokens": message.usage.input_tokens,
-                        "output_tokens": message.usage.output_tokens,
-                    },
+                    "backend": self._llm_backend.__class__.__name__,
                 },
             )
             return content
@@ -125,7 +134,8 @@ class BaseAgent:
                 details={"error": str(e), "error_type": type(e).__name__},
             )
             # Re-raise credit errors as a distinct type so the orchestrator can halt
-            if "credit balance is too low" in str(e).lower() or "billing" in str(e).lower():
+            error_str = str(e).lower()
+            if any(kw in error_str for kw in ["credit balance", "billing", "insufficient"]):
                 raise InsufficientCreditsError(str(e)) from e
             raise
 
@@ -349,5 +359,5 @@ class BaseAgent:
         self.close()
 
 
-class InsufficientCreditsError(RuntimeError):
-    """Raised when the Anthropic API key has no remaining credits."""
+# Re-export for backward compatibility with any code that does:
+#   from umlagents.agents.base import InsufficientCreditsError
